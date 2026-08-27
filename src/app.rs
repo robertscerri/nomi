@@ -3,11 +3,12 @@ use std::{path::PathBuf, time::Duration};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{Terminal, backend::Backend};
 
-use crate::{
+use nomi::{
     error::NomiError,
     rename::{self, Entry, MatchMode, Preview},
-    ui,
 };
+
+use crate::ui;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Focus {

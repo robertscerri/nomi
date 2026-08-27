@@ -1,7 +1,5 @@
 mod app;
 mod cli;
-mod error;
-mod rename;
 mod ui;
 
 use std::{io, process::ExitCode};
@@ -14,7 +12,9 @@ use crossterm::{
 };
 use ratatui::{Terminal, backend::CrosstermBackend};
 
-use crate::{app::App, cli::Cli, error::NomiError};
+use nomi::error::NomiError;
+
+use crate::{app::App, cli::Cli};
 
 fn main() -> ExitCode {
     match run() {

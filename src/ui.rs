@@ -6,10 +6,9 @@ use ratatui::{
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap},
 };
 
-use crate::{
-    app::{App, Focus},
-    rename::MatchMode,
-};
+use nomi::rename::MatchMode;
+
+use crate::app::{App, Focus};
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
