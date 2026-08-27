@@ -280,9 +280,26 @@ impl Widget for StatusBar<'_> {
             label(" quit"),
         ]);
 
-        Paragraph::new(vec![status, controls])
+        let [status_area, controls_area] =
+            Layout::vertical([Constraint::Length(1), Constraint::Length(1)]).areas(area);
+        let identity = Line::from(vec![
+            Span::styled("nomi ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                concat!("v", env!("CARGO_PKG_VERSION")),
+                Style::default().fg(Color::Blue),
+            ),
+        ]);
+
+        let identity_fits = status.width() + identity.width() + 2 <= status_area.width as usize;
+        Paragraph::new(status).render(status_area, buffer);
+        if identity_fits {
+            Paragraph::new(identity)
+                .alignment(Alignment::Right)
+                .render(status_area, buffer);
+        }
+        Paragraph::new(controls)
             .wrap(Wrap { trim: true })
-            .render(area, buffer);
+            .render(controls_area, buffer);
     }
 }
 
