@@ -270,7 +270,7 @@ impl Widget for StatusBar<'_> {
             keycap("Space"),
             label(" select"),
             separator(),
-            keycap(mode_shortcut()),
+            keycap("Ctrl+R"),
             label(" mode"),
             separator(),
             keycap("Enter"),
@@ -313,16 +313,6 @@ fn label(label: &'static str) -> Span<'static> {
 
 fn separator() -> Span<'static> {
     Span::styled("  │  ", Style::default().fg(Color::DarkGray))
-}
-
-#[cfg(target_os = "macos")]
-fn mode_shortcut() -> &'static str {
-    "Cmd+R"
-}
-
-#[cfg(not(target_os = "macos"))]
-fn mode_shortcut() -> &'static str {
-    "Ctrl+R"
 }
 
 fn draw_confirmation(frame: &mut Frame, area: Rect, count: usize) {
