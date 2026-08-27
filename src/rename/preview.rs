@@ -7,7 +7,7 @@ use regex::Regex;
 
 use crate::error::NomiError;
 
-use super::{Entry, MatchMode};
+use super::{Entry, MatchMode, execute::RenameTransaction};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RenameOp {
@@ -16,57 +16,69 @@ pub struct RenameOp {
 }
 
 #[derive(Debug)]
-pub struct Preview {
+pub struct RenamePreview {
     pub names: Vec<Option<String>>,
     pub operations: Vec<RenameOp>,
     pub error: Option<String>,
 }
 
-pub fn build_preview(
-    directory: &Path,
-    entries: &[Entry],
-    pattern: &str,
-    replacement: &str,
-    mode: MatchMode,
-) -> Preview {
-    let mut preview = Preview::empty(entries.len());
-    if pattern.is_empty() {
-        return preview;
-    }
-
-    let regex = match compile_pattern(pattern, mode) {
-        Ok(regex) => regex,
-        Err(error) => {
-            preview.error = Some(format!("Invalid regex: {error}"));
+impl RenamePreview {
+    pub fn build(
+        directory: &Path,
+        entries: &[Entry],
+        pattern: &str,
+        replacement: &str,
+        mode: MatchMode,
+    ) -> Self {
+        let mut preview = Self::empty(entries.len());
+        if pattern.is_empty() {
             return preview;
         }
-    };
 
-    for (index, entry) in entries
-        .iter()
-        .enumerate()
-        .filter(|(_, entry)| entry.selected)
-    {
-        let original = entry.name.to_string_lossy();
-        let Some(destination) = transform_name(&original, pattern, replacement, regex.as_ref())
-        else {
-            continue;
+        let rule = match RenameRule::compile(pattern, replacement, mode) {
+            Ok(rule) => rule,
+            Err(error) => {
+                preview.error = Some(format!("Invalid regex: {error}"));
+                return preview;
+            }
         };
 
-        preview.names[index] = Some(destination.clone());
-        preview.operations.push(RenameOp {
-            from: directory.join(&entry.name),
-            to: directory.join(destination),
-        });
+        for (index, entry) in entries
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| entry.selected)
+        {
+            let original = entry.name.to_string_lossy();
+            let Some(destination) = rule.apply(&original) else {
+                continue;
+            };
+
+            preview.names[index] = Some(destination.clone());
+            preview.operations.push(RenameOp {
+                from: directory.join(&entry.name),
+                to: directory.join(destination),
+            });
+        }
+
+        if let Err(error) = preview.validate(directory) {
+            preview.error = Some(error.to_string());
+        }
+        preview
     }
 
-    if let Err(error) = validate(directory, &preview.operations) {
-        preview.error = Some(error.to_string());
+    pub fn execute(&self, directory: &Path) -> Result<(), NomiError> {
+        self.validate(directory)?;
+        RenameTransaction::new(directory, &self.operations).execute()
     }
-    preview
-}
 
-impl Preview {
+    pub fn len(&self) -> usize {
+        self.operations.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.operations.is_empty()
+    }
+
     fn empty(entry_count: usize) -> Self {
         Self {
             names: vec![None; entry_count],
@@ -74,56 +86,81 @@ impl Preview {
             error: None,
         }
     }
-}
 
-fn compile_pattern(pattern: &str, mode: MatchMode) -> Result<Option<Regex>, regex::Error> {
-    match mode {
-        MatchMode::Regex => Regex::new(pattern).map(Some),
-        MatchMode::Literal => Ok(None),
+    fn validate(&self, directory: &Path) -> Result<(), NomiError> {
+        let sources: HashSet<&Path> = self
+            .operations
+            .iter()
+            .map(|operation| operation.from.as_path())
+            .collect();
+        let mut destinations: HashMap<String, &Path> = HashMap::new();
+
+        for operation in &self.operations {
+            let name = destination_name(directory, operation)?;
+            let key = destination_key(&name);
+
+            if let Some(existing) = destinations.insert(key, operation.to.as_path()) {
+                return Err(NomiError::Validation(format!(
+                    "both '{}' and another entry would become '{}'",
+                    existing.display(),
+                    name
+                )));
+            }
+            if operation.to.exists() && !sources.contains(operation.to.as_path()) {
+                return Err(NomiError::Validation(format!(
+                    "'{}' already exists",
+                    operation.to.display()
+                )));
+            }
+        }
+        Ok(())
     }
 }
 
-fn transform_name(
-    original: &str,
-    pattern: &str,
-    replacement: &str,
-    regex: Option<&Regex>,
-) -> Option<String> {
-    let transformed = match regex {
-        Some(regex) => regex.replace_all(original, replacement).into_owned(),
-        None if original.contains(pattern) => original.replace(pattern, replacement),
-        None => return None,
-    };
-
-    (transformed != original).then_some(transformed)
+enum RenameRule<'a> {
+    Literal {
+        pattern: &'a str,
+        replacement: &'a str,
+    },
+    Regex {
+        pattern: Regex,
+        replacement: &'a str,
+    },
 }
 
-pub fn validate(directory: &Path, operations: &[RenameOp]) -> Result<(), NomiError> {
-    let sources: HashSet<&Path> = operations
-        .iter()
-        .map(|operation| operation.from.as_path())
-        .collect();
-    let mut destinations: HashMap<String, &Path> = HashMap::new();
-
-    for operation in operations {
-        let name = destination_name(directory, operation)?;
-        let key = destination_key(&name);
-
-        if let Some(existing) = destinations.insert(key, operation.to.as_path()) {
-            return Err(NomiError::Validation(format!(
-                "both '{}' and another entry would become '{}'",
-                existing.display(),
-                name
-            )));
-        }
-        if operation.to.exists() && !sources.contains(operation.to.as_path()) {
-            return Err(NomiError::Validation(format!(
-                "'{}' already exists",
-                operation.to.display()
-            )));
+impl<'a> RenameRule<'a> {
+    fn compile(
+        pattern: &'a str,
+        replacement: &'a str,
+        mode: MatchMode,
+    ) -> Result<Self, regex::Error> {
+        match mode {
+            MatchMode::Literal => Ok(Self::Literal {
+                pattern,
+                replacement,
+            }),
+            MatchMode::Regex => Ok(Self::Regex {
+                pattern: Regex::new(pattern)?,
+                replacement,
+            }),
         }
     }
-    Ok(())
+
+    fn apply(&self, original: &str) -> Option<String> {
+        let transformed = match self {
+            Self::Literal {
+                pattern,
+                replacement,
+            } if original.contains(pattern) => original.replace(pattern, replacement),
+            Self::Literal { .. } => return None,
+            Self::Regex {
+                pattern,
+                replacement,
+            } => pattern.replace_all(original, *replacement).into_owned(),
+        };
+
+        (transformed != original).then_some(transformed)
+    }
 }
 
 fn destination_name<'a>(

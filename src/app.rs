@@ -5,7 +5,7 @@ use ratatui::{Terminal, backend::Backend};
 
 use nomi::{
     error::NomiError,
-    rename::{self, Entry, MatchMode, Preview},
+    rename::{self, Entry, MatchMode, RenamePreview},
 };
 
 use crate::ui;
@@ -51,8 +51,8 @@ impl App {
         })
     }
 
-    pub fn preview(&self) -> Preview {
-        rename::build_preview(
+    pub fn preview(&self) -> RenamePreview {
+        RenamePreview::build(
             &self.directory,
             &self.entries,
             &self.pattern,
@@ -118,7 +118,7 @@ impl App {
                 let preview = self.preview();
                 if let Some(error) = preview.error {
                     self.message = Some(error);
-                } else if preview.operations.is_empty() {
+                } else if preview.is_empty() {
                     self.message = Some("Nothing to rename".into());
                 } else {
                     self.confirm = true;
@@ -146,9 +146,9 @@ impl App {
 
     fn execute_preview(&mut self) -> Result<(), NomiError> {
         let preview = self.preview();
-        let count = preview.operations.len();
+        let count = preview.len();
 
-        if let Err(error) = rename::execute(&self.directory, &preview.operations) {
+        if let Err(error) = preview.execute(&self.directory) {
             if matches!(error, NomiError::Rollback { .. }) {
                 return Err(error);
             }

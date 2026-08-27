@@ -1,12 +1,13 @@
 use ratatui::{
     Frame,
+    buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap},
+    widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Widget, Wrap},
 };
 
-use nomi::rename::{Entry, MatchMode, Preview};
+use nomi::rename::{Entry, MatchMode, RenamePreview};
 
 use crate::app::{App, Focus};
 
@@ -45,23 +46,28 @@ fn draw_inputs(frame: &mut Frame, app: &App, pattern_area: Rect, replacement_are
         MatchMode::Literal => "literal",
     };
 
-    draw_input(
-        frame,
-        pattern_area,
-        &format!(" Pattern [{mode}] "),
+    let pattern = InputField::new(
+        format!(" Pattern [{mode}] "),
         &app.pattern,
         app.focus == Focus::Pattern,
     );
-    draw_input(
-        frame,
-        replacement_area,
+    let replacement = InputField::new(
         " Replacement ",
         &app.replacement,
         app.focus == Focus::Replacement,
     );
+
+    frame.render_widget(&pattern, pattern_area);
+    frame.render_widget(&replacement, replacement_area);
+
+    if pattern.focused {
+        frame.set_cursor_position(pattern.cursor_position(pattern_area));
+    } else if replacement.focused {
+        frame.set_cursor_position(replacement.cursor_position(replacement_area));
+    }
 }
 
-fn draw_files(frame: &mut Frame, app: &mut App, preview: &Preview, area: Rect) {
+fn draw_files(frame: &mut Frame, app: &mut App, preview: &RenamePreview, area: Rect) {
     let visible_rows = area.height.saturating_sub(2) as usize;
     keep_cursor_visible(app, visible_rows);
 
@@ -94,7 +100,12 @@ fn keep_cursor_visible(app: &mut App, visible_rows: usize) {
     }
 }
 
-fn file_row<'a>(app: &App, preview: &'a Preview, index: usize, entry: &'a Entry) -> ListItem<'a> {
+fn file_row<'a>(
+    app: &App,
+    preview: &'a RenamePreview,
+    index: usize,
+    entry: &'a Entry,
+) -> ListItem<'a> {
     let marker = if entry.selected { "[x]" } else { "[ ]" };
     let directory_suffix = if entry.is_dir { "/" } else { "" };
     let original = entry.name.to_string_lossy();
@@ -112,33 +123,72 @@ fn file_row<'a>(app: &App, preview: &'a Preview, index: usize, entry: &'a Entry)
     ListItem::new(content).style(selection_style(highlighted))
 }
 
-fn draw_status(frame: &mut Frame, app: &App, preview: &Preview, area: Rect) {
-    let status = match (&app.message, &preview.error) {
-        (Some(message), _) => Span::styled(message, Style::default().fg(Color::Yellow)),
-        (None, Some(error)) => Span::styled(error, Style::default().fg(Color::Red)),
-        (None, None) => Span::raw(format!(
-            "{} change(s)  •  Tab fields  Space select  Ctrl+R mode  Enter rename  Esc quit",
-            preview.operations.len()
-        )),
-    };
-
-    frame.render_widget(
-        Paragraph::new(Line::from(status)).wrap(Wrap { trim: true }),
-        area,
-    );
+fn draw_status(frame: &mut Frame, app: &App, preview: &RenamePreview, area: Rect) {
+    frame.render_widget(StatusBar::new(app, preview), area);
 }
 
-fn draw_input(frame: &mut Frame, area: Rect, title: &str, value: &str, focused: bool) {
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(title)
-        .border_style(focus_style(focused));
-    frame.render_widget(Paragraph::new(value).block(block), area);
+struct InputField<'a> {
+    title: String,
+    value: &'a str,
+    focused: bool,
+}
 
-    if focused {
-        let text_width = value.chars().count() as u16;
+impl<'a> InputField<'a> {
+    fn new(title: impl Into<String>, value: &'a str, focused: bool) -> Self {
+        Self {
+            title: title.into(),
+            value,
+            focused,
+        }
+    }
+
+    fn cursor_position(&self, area: Rect) -> (u16, u16) {
+        let text_width = self.value.chars().count() as u16;
         let cursor_x = (area.x + 1 + text_width).min(area.right().saturating_sub(2));
-        frame.set_cursor_position((cursor_x, area.y + 1));
+        (cursor_x, area.y + 1)
+    }
+}
+
+impl Widget for &InputField<'_> {
+    fn render(self, area: Rect, buffer: &mut Buffer) {
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .title(self.title.as_str())
+            .border_style(focus_style(self.focused));
+        Paragraph::new(self.value).block(block).render(area, buffer);
+    }
+}
+
+struct StatusBar<'a> {
+    message: Option<&'a str>,
+    error: Option<&'a str>,
+    change_count: usize,
+}
+
+impl<'a> StatusBar<'a> {
+    fn new(app: &'a App, preview: &'a RenamePreview) -> Self {
+        Self {
+            message: app.message.as_deref(),
+            error: preview.error.as_deref(),
+            change_count: preview.len(),
+        }
+    }
+}
+
+impl Widget for StatusBar<'_> {
+    fn render(self, area: Rect, buffer: &mut Buffer) {
+        let status = match (self.message, self.error) {
+            (Some(message), _) => Span::styled(message, Style::default().fg(Color::Yellow)),
+            (None, Some(error)) => Span::styled(error, Style::default().fg(Color::Red)),
+            (None, None) => Span::raw(format!(
+                "{} change(s)  •  Tab fields  Space select  Ctrl+R mode  Enter rename  Esc quit",
+                self.change_count
+            )),
+        };
+
+        Paragraph::new(Line::from(status))
+            .wrap(Wrap { trim: true })
+            .render(area, buffer);
     }
 }
 

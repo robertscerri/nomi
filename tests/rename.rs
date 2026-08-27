@@ -1,6 +1,6 @@
 use std::{fs, path::Path};
 
-use nomi::rename::{self, Entry, MatchMode, RenameOp};
+use nomi::rename::{Entry, MatchMode, RenameOp, RenamePreview};
 
 fn entry(name: &str) -> Entry {
     Entry {
@@ -13,7 +13,7 @@ fn entry(name: &str) -> Entry {
 #[test]
 fn regex_preview_expands_captures() {
     let dir = Path::new("/work");
-    let preview = rename::build_preview(
+    let preview = RenamePreview::build(
         dir,
         &[entry("IMG_001.jpg")],
         r"^IMG_(\d+)\.jpg$",
@@ -26,7 +26,7 @@ fn regex_preview_expands_captures() {
 
 #[test]
 fn literal_preview_replaces_all_matches() {
-    let preview = rename::build_preview(
+    let preview = RenamePreview::build(
         Path::new("/work"),
         &[entry("foo-foo.txt")],
         "foo",
@@ -39,7 +39,7 @@ fn literal_preview_replaces_all_matches() {
 #[test]
 fn rejects_duplicate_destinations() {
     let dir = Path::new("/work");
-    let preview = rename::build_preview(
+    let preview = RenamePreview::build(
         dir,
         &[entry("a1.txt"), entry("a2.txt")],
         r"a\d",
@@ -64,7 +64,12 @@ fn execute_supports_swaps() {
             to: temp.path().join("a.txt"),
         },
     ];
-    rename::execute(temp.path(), &operations).unwrap();
+    let preview = RenamePreview {
+        names: vec![Some("b.txt".into()), Some("a.txt".into())],
+        operations,
+        error: None,
+    };
+    preview.execute(temp.path()).unwrap();
     assert_eq!(fs::read_to_string(temp.path().join("a.txt")).unwrap(), "B");
     assert_eq!(fs::read_to_string(temp.path().join("b.txt")).unwrap(), "A");
 }

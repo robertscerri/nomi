@@ -5,8 +5,7 @@ use std::{ffi::OsString, fs, path::Path};
 
 use crate::error::NomiError;
 
-pub use execute::execute;
-pub use preview::{Preview, RenameOp, build_preview, validate};
+pub use preview::{RenameOp, RenamePreview};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MatchMode {

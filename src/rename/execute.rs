@@ -5,73 +5,85 @@ use std::{
 
 use crate::error::NomiError;
 
-use super::preview::{RenameOp, validate};
+use super::preview::RenameOp;
 
-pub fn execute(directory: &Path, operations: &[RenameOp]) -> Result<(), NomiError> {
-    validate(directory, operations)?;
-    if operations.is_empty() {
-        return Ok(());
-    }
-
-    let temporary = temporary_paths(directory, operations.len());
-    stage_operations(operations, &temporary)?;
-    commit_operations(operations, &temporary)
+pub(super) struct RenameTransaction<'a> {
+    operations: &'a [RenameOp],
+    temporary: Vec<PathBuf>,
 }
 
-fn temporary_paths(directory: &Path, count: usize) -> Vec<PathBuf> {
-    let process_id = std::process::id();
-    (0..count)
-        .map(|index| unique_temp_path(directory, process_id, index))
-        .collect()
-}
+impl<'a> RenameTransaction<'a> {
+    pub(super) fn new(directory: &Path, operations: &'a [RenameOp]) -> Self {
+        let process_id = std::process::id();
+        let temporary = (0..operations.len())
+            .map(|index| unique_temp_path(directory, process_id, index))
+            .collect();
 
-fn stage_operations(operations: &[RenameOp], temporary: &[PathBuf]) -> Result<(), NomiError> {
-    for (staged, (operation, temp)) in operations.iter().zip(temporary).enumerate() {
-        if let Err(source) = fs::rename(&operation.from, temp) {
-            let rollback_errors = restore_staged(operations, temporary, staged);
-            return rename_failure(&operation.from, temp, source, rollback_errors);
+        Self {
+            operations,
+            temporary,
         }
     }
-    Ok(())
-}
 
-fn commit_operations(operations: &[RenameOp], temporary: &[PathBuf]) -> Result<(), NomiError> {
-    for (committed, (operation, temp)) in operations.iter().zip(temporary).enumerate() {
-        if let Err(source) = fs::rename(temp, &operation.to) {
-            let mut rollback_errors = restore_committed(operations, committed);
-            rollback_errors.extend(restore_staged(operations, temporary, operations.len()));
-            return rename_failure(temp, &operation.to, source, rollback_errors);
+    pub(super) fn execute(&self) -> Result<(), NomiError> {
+        if self.operations.is_empty() {
+            return Ok(());
         }
-    }
-    Ok(())
-}
 
-fn restore_committed(operations: &[RenameOp], committed: usize) -> Vec<String> {
-    let mut errors = Vec::new();
-    for operation in operations[..committed].iter().rev() {
-        if let Err(error) = fs::rename(&operation.to, &operation.from) {
-            errors.push(format!(
-                "could not restore '{}': {error}",
-                operation.from.display()
-            ));
+        self.stage()?;
+        self.commit()
+    }
+
+    fn stage(&self) -> Result<(), NomiError> {
+        for (staged, (operation, temp)) in self.operations.iter().zip(&self.temporary).enumerate() {
+            if let Err(source) = fs::rename(&operation.from, temp) {
+                let rollback_errors = self.restore_staged(staged);
+                return rename_failure(&operation.from, temp, source, rollback_errors);
+            }
         }
+        Ok(())
     }
-    errors
-}
 
-fn restore_staged(operations: &[RenameOp], temporary: &[PathBuf], staged: usize) -> Vec<String> {
-    let mut errors = Vec::new();
-    for index in (0..staged).rev() {
-        if temporary[index].exists()
-            && let Err(error) = fs::rename(&temporary[index], &operations[index].from)
+    fn commit(&self) -> Result<(), NomiError> {
+        for (committed, (operation, temp)) in
+            self.operations.iter().zip(&self.temporary).enumerate()
         {
-            errors.push(format!(
-                "could not restore '{}': {error}",
-                operations[index].from.display()
-            ));
+            if let Err(source) = fs::rename(temp, &operation.to) {
+                let mut rollback_errors = self.restore_committed(committed);
+                rollback_errors.extend(self.restore_staged(self.operations.len()));
+                return rename_failure(temp, &operation.to, source, rollback_errors);
+            }
         }
+        Ok(())
     }
-    errors
+
+    fn restore_committed(&self, committed: usize) -> Vec<String> {
+        let mut errors = Vec::new();
+        for operation in self.operations[..committed].iter().rev() {
+            if let Err(error) = fs::rename(&operation.to, &operation.from) {
+                errors.push(format!(
+                    "could not restore '{}': {error}",
+                    operation.from.display()
+                ));
+            }
+        }
+        errors
+    }
+
+    fn restore_staged(&self, staged: usize) -> Vec<String> {
+        let mut errors = Vec::new();
+        for index in (0..staged).rev() {
+            if self.temporary[index].exists()
+                && let Err(error) = fs::rename(&self.temporary[index], &self.operations[index].from)
+            {
+                errors.push(format!(
+                    "could not restore '{}': {error}",
+                    self.operations[index].from.display()
+                ));
+            }
+        }
+        errors
+    }
 }
 
 fn rename_failure(
