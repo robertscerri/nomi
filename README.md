@@ -22,6 +22,8 @@ nomi path/to/photos
 | Key | Action |
 | --- | --- |
 | `Tab` / `Shift+Tab` | Move between inputs and file list |
+| `Left` / `Right`, `Home` / `End` | Move within an input |
+| `Backspace` / `Delete` | Remove text before or after the cursor |
 | `Ctrl+R` | Toggle regex/literal mode |
 | `Up` / `Down`, `j` / `k` | Move through files |
 | `Space` | Include or exclude the highlighted item |

@@ -44,13 +44,15 @@ fn draw_inputs(frame: &mut Frame, app: &App, pattern_area: Rect, replacement_are
     let pattern = InputField::new(
         Line::styled(" Pattern ", Style::default().fg(Color::DarkGray)),
         Some(mode_title(app.mode)),
-        &app.pattern,
+        app.pattern.value(),
+        app.pattern.cursor(),
         app.focus == Focus::Pattern,
     );
     let replacement = InputField::new(
         Line::styled(" Replacement ", Style::default().fg(Color::DarkGray)),
         None,
-        &app.replacement,
+        app.replacement.value(),
+        app.replacement.cursor(),
         app.focus == Focus::Replacement,
     );
 
@@ -158,6 +160,7 @@ struct InputField<'a> {
     title: Line<'static>,
     right_title: Option<Line<'static>>,
     value: &'a str,
+    cursor: usize,
     focused: bool,
 }
 
@@ -166,20 +169,26 @@ impl<'a> InputField<'a> {
         title: Line<'static>,
         right_title: Option<Line<'static>>,
         value: &'a str,
+        cursor: usize,
         focused: bool,
     ) -> Self {
         Self {
             title,
             right_title,
             value,
+            cursor,
             focused,
         }
     }
 
     fn cursor_position(&self, area: Rect) -> (u16, u16) {
-        let text_width = self.value.chars().count() as u16;
-        let cursor_x = (area.x + 1 + text_width).min(area.right().saturating_sub(2));
+        let cursor_x = area.x + 1 + self.cursor.saturating_sub(self.horizontal_scroll(area)) as u16;
         (cursor_x, area.y + 1)
+    }
+
+    fn horizontal_scroll(&self, area: Rect) -> usize {
+        let visible_width = area.width.saturating_sub(2) as usize;
+        self.cursor.saturating_sub(visible_width.saturating_sub(1))
     }
 }
 
@@ -195,6 +204,7 @@ impl Widget for &InputField<'_> {
         Paragraph::new(self.value)
             .style(Style::default().fg(Color::White))
             .block(block)
+            .scroll((0, self.horizontal_scroll(area) as u16))
             .render(area, buffer);
     }
 }

@@ -17,11 +17,78 @@ pub enum Focus {
     Files,
 }
 
+#[derive(Default)]
+pub struct TextInput {
+    value: String,
+    cursor: usize,
+}
+
+impl TextInput {
+    pub fn value(&self) -> &str {
+        &self.value
+    }
+
+    pub fn cursor(&self) -> usize {
+        self.cursor
+    }
+
+    fn insert(&mut self, character: char) {
+        let byte_index = self.byte_index();
+        self.value.insert(byte_index, character);
+        self.cursor += 1;
+    }
+
+    fn backspace(&mut self) {
+        if self.cursor == 0 {
+            return;
+        }
+
+        self.cursor -= 1;
+        let byte_index = self.byte_index();
+        self.value.remove(byte_index);
+    }
+
+    fn delete(&mut self) {
+        if self.cursor < self.value.chars().count() {
+            let byte_index = self.byte_index();
+            self.value.remove(byte_index);
+        }
+    }
+
+    fn move_left(&mut self) {
+        self.cursor = self.cursor.saturating_sub(1);
+    }
+
+    fn move_right(&mut self) {
+        self.cursor = (self.cursor + 1).min(self.value.chars().count());
+    }
+
+    fn move_to_start(&mut self) {
+        self.cursor = 0;
+    }
+
+    fn move_to_end(&mut self) {
+        self.cursor = self.value.chars().count();
+    }
+
+    fn clear(&mut self) {
+        self.value.clear();
+        self.cursor = 0;
+    }
+
+    fn byte_index(&self) -> usize {
+        self.value
+            .char_indices()
+            .nth(self.cursor)
+            .map_or(self.value.len(), |(index, _)| index)
+    }
+}
+
 pub struct App {
     pub directory: PathBuf,
     pub entries: Vec<Entry>,
-    pub pattern: String,
-    pub replacement: String,
+    pub pattern: TextInput,
+    pub replacement: TextInput,
     pub mode: MatchMode,
     pub focus: Focus,
     pub cursor: usize,
@@ -39,8 +106,8 @@ impl App {
         Ok(Self {
             directory,
             entries,
-            pattern: String::new(),
-            replacement: String::new(),
+            pattern: TextInput::default(),
+            replacement: TextInput::default(),
             mode: MatchMode::Regex,
             focus: Focus::Pattern,
             cursor: 0,
@@ -55,8 +122,8 @@ impl App {
         RenamePreview::build(
             &self.directory,
             &self.entries,
-            &self.pattern,
-            &self.replacement,
+            self.pattern.value(),
+            self.replacement.value(),
             self.mode,
         )
     }
@@ -206,11 +273,13 @@ impl App {
         };
 
         match key.code {
-            KeyCode::Char(character) => input.push(character),
-            KeyCode::Backspace => {
-                input.pop();
-            }
-            KeyCode::Delete => input.clear(),
+            KeyCode::Char(character) => input.insert(character),
+            KeyCode::Backspace => input.backspace(),
+            KeyCode::Delete => input.delete(),
+            KeyCode::Left => input.move_left(),
+            KeyCode::Right => input.move_right(),
+            KeyCode::Home => input.move_to_start(),
+            KeyCode::End => input.move_to_end(),
             _ => {}
         }
     }
