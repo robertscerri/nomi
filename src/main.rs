@@ -16,6 +16,7 @@ use nomi::error::NomiError;
 
 use crate::{app::App, cli::Cli};
 
+// TODO: Unvibecode codebase
 fn main() -> ExitCode {
     match run() {
         Ok(()) => ExitCode::SUCCESS,

@@ -42,14 +42,14 @@ fn main_layout(area: Rect) -> [Rect; 4] {
 
 fn draw_inputs(frame: &mut Frame, app: &App, pattern_area: Rect, replacement_area: Rect) {
     let pattern = InputField::new(
-        Line::styled(" Pattern ", Style::default().fg(Color::DarkGray)),
+        Line::raw(" Pattern "),
         Some(mode_title(app.mode)),
         app.pattern.value(),
         app.pattern.cursor(),
         app.focus == Focus::Pattern,
     );
     let replacement = InputField::new(
-        Line::styled(" Replacement ", Style::default().fg(Color::DarkGray)),
+        Line::raw(" Replacement "),
         None,
         app.replacement.value(),
         app.replacement.cursor(),
@@ -196,7 +196,7 @@ impl Widget for &InputField<'_> {
     fn render(self, area: Rect, buffer: &mut Buffer) {
         let mut block = Block::default()
             .borders(Borders::ALL)
-            .title_top(self.title.clone())
+            .title_top(self.title.clone().style(focus_style(self.focused)))
             .border_style(focus_style(self.focused));
         if let Some(right_title) = &self.right_title {
             block = block.title_top(right_title.clone().right_aligned());
@@ -216,7 +216,7 @@ fn mode_title(mode: MatchMode) -> Line<'static> {
 
     Line::from(vec![
         Span::styled(" ● ", Style::default().fg(color)),
-        Span::raw(format!("{name} ")),
+        Span::styled(format!("{name} "), Style::default().fg(Color::Reset)),
     ])
 }
 
