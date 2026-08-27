@@ -6,147 +6,160 @@ use ratatui::{
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap},
 };
 
-use nomi::rename::MatchMode;
+use nomi::rename::{Entry, MatchMode, Preview};
 
 use crate::app::{App, Focus};
 
+const INPUT_HEIGHT: u16 = 3;
+const STATUS_HEIGHT: u16 = 2;
+
 pub fn draw(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(3),
-            Constraint::Length(3),
-            Constraint::Min(5),
-            Constraint::Length(2),
-        ])
-        .split(area);
-
-    let mode = match app.mode {
-        MatchMode::Regex => "regex",
-        MatchMode::Literal => "literal",
-    };
-    draw_input(
-        frame,
-        chunks[0],
-        &format!(" Pattern [{mode}] "),
-        &app.pattern,
-        app.focus == Focus::Pattern,
-    );
-    draw_input(
-        frame,
-        chunks[1],
-        " Replacement ",
-        &app.replacement,
-        app.focus == Focus::Replacement,
-    );
-
+    let [pattern_area, replacement_area, files_area, status_area] = main_layout(area);
     let preview = app.preview();
-    let visible_height = chunks[2].height.saturating_sub(2) as usize;
-    if app.cursor < app.scroll {
-        app.scroll = app.cursor;
-    } else if visible_height > 0 && app.cursor >= app.scroll + visible_height {
-        app.scroll = app.cursor + 1 - visible_height;
-    }
 
-    let items = app
-        .entries
-        .iter()
-        .enumerate()
-        .skip(app.scroll)
-        .take(visible_height)
-        .map(|(index, entry)| {
-            let marker = if entry.selected { "[x]" } else { "[ ]" };
-            let kind = if entry.is_dir { "/" } else { "" };
-            let original = entry.name.to_string_lossy();
-            let line = if let Some(destination) = &preview.names[index] {
-                Line::from(vec![
-                    Span::raw(format!("{marker} {original}{kind}")),
-                    Span::styled("  →  ", Style::default().fg(Color::DarkGray)),
-                    Span::styled(destination, Style::default().fg(Color::Green)),
-                ])
-            } else {
-                Line::from(format!("{marker} {original}{kind}"))
-            };
-            let style = if app.focus == Focus::Files && index == app.cursor {
-                Style::default()
-                    .bg(Color::DarkGray)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default()
-            };
-            ListItem::new(line).style(style)
-        })
-        .collect::<Vec<_>>();
-
-    let title = format!(
-        " {} — {} item(s) ",
-        app.directory.display(),
-        app.entries.len()
-    );
-    frame.render_widget(
-        List::new(items).block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(title)
-                .border_style(focus_style(app.focus == Focus::Files)),
-        ),
-        chunks[2],
-    );
-
-    let status = if let Some(message) = &app.message {
-        Span::styled(message, Style::default().fg(Color::Yellow))
-    } else if let Some(error) = &preview.error {
-        Span::styled(error, Style::default().fg(Color::Red))
-    } else {
-        Span::raw(format!(
-            "{} change(s)  •  Tab fields  Space select  Ctrl+R mode  Enter rename  Esc quit",
-            preview.operations.len()
-        ))
-    };
-    frame.render_widget(
-        Paragraph::new(Line::from(status)).wrap(Wrap { trim: true }),
-        chunks[3],
-    );
+    draw_inputs(frame, app, pattern_area, replacement_area);
+    draw_files(frame, app, &preview, files_area);
+    draw_status(frame, app, &preview, status_area);
 
     if app.confirm {
         draw_confirmation(frame, area, preview.operations.len());
     }
 }
 
-fn draw_input(frame: &mut Frame, area: Rect, title: &str, value: &str, focused: bool) {
+fn main_layout(area: Rect) -> [Rect; 4] {
+    Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(INPUT_HEIGHT),
+            Constraint::Length(INPUT_HEIGHT),
+            Constraint::Min(5),
+            Constraint::Length(STATUS_HEIGHT),
+        ])
+        .areas(area)
+}
+
+fn draw_inputs(frame: &mut Frame, app: &App, pattern_area: Rect, replacement_area: Rect) {
+    let mode = match app.mode {
+        MatchMode::Regex => "regex",
+        MatchMode::Literal => "literal",
+    };
+
+    draw_input(
+        frame,
+        pattern_area,
+        &format!(" Pattern [{mode}] "),
+        &app.pattern,
+        app.focus == Focus::Pattern,
+    );
+    draw_input(
+        frame,
+        replacement_area,
+        " Replacement ",
+        &app.replacement,
+        app.focus == Focus::Replacement,
+    );
+}
+
+fn draw_files(frame: &mut Frame, app: &mut App, preview: &Preview, area: Rect) {
+    let visible_rows = area.height.saturating_sub(2) as usize;
+    keep_cursor_visible(app, visible_rows);
+
+    let items = app
+        .entries
+        .iter()
+        .enumerate()
+        .skip(app.scroll)
+        .take(visible_rows)
+        .map(|(index, entry)| file_row(app, preview, index, entry));
+
+    let title = format!(
+        " {} — {} item(s) ",
+        app.directory.display(),
+        app.entries.len()
+    );
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(title)
+        .border_style(focus_style(app.focus == Focus::Files));
+
+    frame.render_widget(List::new(items).block(block), area);
+}
+
+fn keep_cursor_visible(app: &mut App, visible_rows: usize) {
+    if app.cursor < app.scroll {
+        app.scroll = app.cursor;
+    } else if visible_rows > 0 && app.cursor >= app.scroll + visible_rows {
+        app.scroll = app.cursor + 1 - visible_rows;
+    }
+}
+
+fn file_row<'a>(app: &App, preview: &'a Preview, index: usize, entry: &'a Entry) -> ListItem<'a> {
+    let marker = if entry.selected { "[x]" } else { "[ ]" };
+    let directory_suffix = if entry.is_dir { "/" } else { "" };
+    let original = entry.name.to_string_lossy();
+
+    let content = match &preview.names[index] {
+        Some(destination) => Line::from(vec![
+            Span::raw(format!("{marker} {original}{directory_suffix}")),
+            Span::styled("  →  ", Style::default().fg(Color::DarkGray)),
+            Span::styled(destination, Style::default().fg(Color::Green)),
+        ]),
+        None => Line::from(format!("{marker} {original}{directory_suffix}")),
+    };
+
+    let highlighted = app.focus == Focus::Files && index == app.cursor;
+    ListItem::new(content).style(selection_style(highlighted))
+}
+
+fn draw_status(frame: &mut Frame, app: &App, preview: &Preview, area: Rect) {
+    let status = match (&app.message, &preview.error) {
+        (Some(message), _) => Span::styled(message, Style::default().fg(Color::Yellow)),
+        (None, Some(error)) => Span::styled(error, Style::default().fg(Color::Red)),
+        (None, None) => Span::raw(format!(
+            "{} change(s)  •  Tab fields  Space select  Ctrl+R mode  Enter rename  Esc quit",
+            preview.operations.len()
+        )),
+    };
+
     frame.render_widget(
-        Paragraph::new(value).block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(title)
-                .border_style(focus_style(focused)),
-        ),
+        Paragraph::new(Line::from(status)).wrap(Wrap { trim: true }),
         area,
     );
+}
+
+fn draw_input(frame: &mut Frame, area: Rect, title: &str, value: &str, focused: bool) {
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(title)
+        .border_style(focus_style(focused));
+    frame.render_widget(Paragraph::new(value).block(block), area);
+
     if focused {
-        let cursor_x = area.x + 1 + value.chars().count() as u16;
-        frame.set_cursor_position((cursor_x.min(area.right().saturating_sub(2)), area.y + 1));
+        let text_width = value.chars().count() as u16;
+        let cursor_x = (area.x + 1 + text_width).min(area.right().saturating_sub(2));
+        frame.set_cursor_position((cursor_x, area.y + 1));
     }
 }
 
 fn draw_confirmation(frame: &mut Frame, area: Rect, count: usize) {
     let popup = centered_rect(52, 7, area);
+    let content = vec![
+        Line::from(""),
+        Line::from(format!("Rename {count} item(s)?")),
+        Line::from(""),
+        Line::from("Enter/Y confirm    N/Esc cancel"),
+    ];
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Confirm ")
+        .border_style(Style::default().fg(Color::Yellow));
+
     frame.render_widget(Clear, popup);
     frame.render_widget(
-        Paragraph::new(vec![
-            Line::from(""),
-            Line::from(format!("Rename {count} item(s)?")),
-            Line::from(""),
-            Line::from("Enter/Y confirm    N/Esc cancel"),
-        ])
-        .alignment(Alignment::Center)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(" Confirm ")
-                .border_style(Style::default().fg(Color::Yellow)),
-        ),
+        Paragraph::new(content)
+            .alignment(Alignment::Center)
+            .block(block),
         popup,
     );
 }
@@ -154,6 +167,16 @@ fn draw_confirmation(frame: &mut Frame, area: Rect, count: usize) {
 fn focus_style(focused: bool) -> Style {
     if focused {
         Style::default().fg(Color::Cyan)
+    } else {
+        Style::default()
+    }
+}
+
+fn selection_style(selected: bool) -> Style {
+    if selected {
+        Style::default()
+            .bg(Color::DarkGray)
+            .add_modifier(Modifier::BOLD)
     } else {
         Style::default()
     }
