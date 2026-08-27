@@ -125,7 +125,7 @@ fn file_row<'a>(
 
     let indicator = match (highlighted, entry.selected) {
         (true, _) => Span::styled("› ", Style::default().fg(Color::Magenta)),
-        (false, true) => Span::styled("● ", Style::default().fg(Color::White)),
+        (false, true) => Span::raw("● "),
         (false, false) => Span::styled("○ ", Style::default().fg(Color::DarkGray)),
     };
     let original = Span::styled(
@@ -135,7 +135,7 @@ fn file_row<'a>(
         } else if entry.is_dir {
             Color::Blue
         } else {
-            Color::White
+            Color::Reset
         }),
     );
 
@@ -202,7 +202,6 @@ impl Widget for &InputField<'_> {
             block = block.title_top(right_title.clone().right_aligned());
         }
         Paragraph::new(self.value)
-            .style(Style::default().fg(Color::White))
             .block(block)
             .scroll((0, self.horizontal_scroll(area) as u16))
             .render(area, buffer);
@@ -217,7 +216,7 @@ fn mode_title(mode: MatchMode) -> Line<'static> {
 
     Line::from(vec![
         Span::styled(" ● ", Style::default().fg(color)),
-        Span::styled(format!("{name} "), Style::default().fg(Color::White)),
+        Span::raw(format!("{name} ")),
     ])
 }
 
@@ -242,7 +241,7 @@ impl Widget for StatusBar<'_> {
         let status = match (self.message, self.error) {
             (Some(message), _) => Line::from(vec![
                 Span::styled("● ", Style::default().fg(Color::Blue)),
-                Span::styled(message, Style::default().fg(Color::White)),
+                Span::raw(message),
             ]),
             (None, Some(error)) => Line::from(vec![
                 Span::styled("! ", Style::default().fg(Color::Red)),
@@ -250,7 +249,7 @@ impl Widget for StatusBar<'_> {
             ]),
             (None, None) => Line::from(vec![
                 Span::styled("● ", Style::default().fg(Color::Green)),
-                Span::styled("Ready", Style::default().fg(Color::White)),
+                Span::raw("Ready"),
                 Span::styled(" — ", Style::default().fg(Color::DarkGray)),
                 Span::styled(
                     format!("{} pending change(s)", self.change_count),
