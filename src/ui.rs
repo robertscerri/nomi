@@ -2,7 +2,7 @@ use ratatui::{
     Frame,
     buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Color, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Widget, Wrap},
 };
@@ -41,18 +41,15 @@ fn main_layout(area: Rect) -> [Rect; 4] {
 }
 
 fn draw_inputs(frame: &mut Frame, app: &App, pattern_area: Rect, replacement_area: Rect) {
-    let mode = match app.mode {
-        MatchMode::Regex => "regex",
-        MatchMode::Literal => "literal",
-    };
-
     let pattern = InputField::new(
-        format!(" Pattern [{mode}] "),
+        Line::styled(" Pattern ", Style::default().fg(Color::DarkGray)),
+        Some(mode_title(app.mode)),
         &app.pattern,
         app.focus == Focus::Pattern,
     );
     let replacement = InputField::new(
-        " Replacement ",
+        Line::styled(" Replacement ", Style::default().fg(Color::DarkGray)),
+        None,
         &app.replacement,
         app.focus == Focus::Replacement,
     );
@@ -79,14 +76,28 @@ fn draw_files(frame: &mut Frame, app: &mut App, preview: &RenamePreview, area: R
         .take(visible_rows)
         .map(|(index, entry)| file_row(app, preview, index, entry));
 
-    let title = format!(
-        " {} — {} item(s) ",
-        app.directory.display(),
-        app.entries.len()
-    );
+    let item_label = if app.entries.len() == 1 {
+        "item"
+    } else {
+        "items"
+    };
+    let path_title = Line::from(vec![
+        Span::styled(" ", Style::default()),
+        Span::styled(
+            display_path(&app.directory),
+            Style::default().fg(Color::Blue),
+        ),
+        Span::styled(" ", Style::default()),
+    ]);
+    let count_title = Line::styled(
+        format!(" {} {item_label} ", app.entries.len()),
+        Style::default().fg(Color::DarkGray),
+    )
+    .right_aligned();
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(title)
+        .title_top(path_title)
+        .title_top(count_title)
         .border_style(focus_style(app.focus == Focus::Files));
 
     frame.render_widget(List::new(items).block(block), area);
@@ -106,21 +117,37 @@ fn file_row<'a>(
     index: usize,
     entry: &'a Entry,
 ) -> ListItem<'a> {
-    let marker = if entry.selected { "[x]" } else { "[ ]" };
+    let highlighted = app.focus == Focus::Files && index == app.cursor;
     let directory_suffix = if entry.is_dir { "/" } else { "" };
     let original = entry.name.to_string_lossy();
 
+    let indicator = match (highlighted, entry.selected) {
+        (true, _) => Span::styled("› ", Style::default().fg(Color::Magenta)),
+        (false, true) => Span::styled("● ", Style::default().fg(Color::White)),
+        (false, false) => Span::styled("○ ", Style::default().fg(Color::DarkGray)),
+    };
+    let original = Span::styled(
+        format!("{original}{directory_suffix}"),
+        Style::default().fg(if !entry.selected {
+            Color::DarkGray
+        } else if entry.is_dir {
+            Color::Blue
+        } else {
+            Color::White
+        }),
+    );
+
     let content = match &preview.names[index] {
         Some(destination) => Line::from(vec![
-            Span::raw(format!("{marker} {original}{directory_suffix}")),
-            Span::styled("  →  ", Style::default().fg(Color::DarkGray)),
+            indicator,
+            original,
+            Span::styled("  ›  ", Style::default().fg(Color::Magenta)),
             Span::styled(destination, Style::default().fg(Color::Green)),
         ]),
-        None => Line::from(format!("{marker} {original}{directory_suffix}")),
+        None => Line::from(vec![indicator, original]),
     };
 
-    let highlighted = app.focus == Focus::Files && index == app.cursor;
-    ListItem::new(content).style(selection_style(highlighted))
+    ListItem::new(content)
 }
 
 fn draw_status(frame: &mut Frame, app: &App, preview: &RenamePreview, area: Rect) {
@@ -128,15 +155,22 @@ fn draw_status(frame: &mut Frame, app: &App, preview: &RenamePreview, area: Rect
 }
 
 struct InputField<'a> {
-    title: String,
+    title: Line<'static>,
+    right_title: Option<Line<'static>>,
     value: &'a str,
     focused: bool,
 }
 
 impl<'a> InputField<'a> {
-    fn new(title: impl Into<String>, value: &'a str, focused: bool) -> Self {
+    fn new(
+        title: Line<'static>,
+        right_title: Option<Line<'static>>,
+        value: &'a str,
+        focused: bool,
+    ) -> Self {
         Self {
-            title: title.into(),
+            title,
+            right_title,
             value,
             focused,
         }
@@ -151,12 +185,30 @@ impl<'a> InputField<'a> {
 
 impl Widget for &InputField<'_> {
     fn render(self, area: Rect, buffer: &mut Buffer) {
-        let block = Block::default()
+        let mut block = Block::default()
             .borders(Borders::ALL)
-            .title(self.title.as_str())
+            .title_top(self.title.clone())
             .border_style(focus_style(self.focused));
-        Paragraph::new(self.value).block(block).render(area, buffer);
+        if let Some(right_title) = &self.right_title {
+            block = block.title_top(right_title.clone().right_aligned());
+        }
+        Paragraph::new(self.value)
+            .style(Style::default().fg(Color::White))
+            .block(block)
+            .render(area, buffer);
     }
+}
+
+fn mode_title(mode: MatchMode) -> Line<'static> {
+    let (name, color) = match mode {
+        MatchMode::Regex => ("Regex", Color::Magenta),
+        MatchMode::Literal => ("Literal", Color::Blue),
+    };
+
+    Line::from(vec![
+        Span::styled(" ● ", Style::default().fg(color)),
+        Span::styled(format!("{name} "), Style::default().fg(Color::White)),
+    ])
 }
 
 struct StatusBar<'a> {
@@ -178,18 +230,72 @@ impl<'a> StatusBar<'a> {
 impl Widget for StatusBar<'_> {
     fn render(self, area: Rect, buffer: &mut Buffer) {
         let status = match (self.message, self.error) {
-            (Some(message), _) => Span::styled(message, Style::default().fg(Color::Yellow)),
-            (None, Some(error)) => Span::styled(error, Style::default().fg(Color::Red)),
-            (None, None) => Span::raw(format!(
-                "{} change(s)  •  Tab fields  Space select  Ctrl+R mode  Enter rename  Esc quit",
-                self.change_count
-            )),
+            (Some(message), _) => Line::from(vec![
+                Span::styled("● ", Style::default().fg(Color::Blue)),
+                Span::styled(message, Style::default().fg(Color::White)),
+            ]),
+            (None, Some(error)) => Line::from(vec![
+                Span::styled("! ", Style::default().fg(Color::Red)),
+                Span::styled(error, Style::default().fg(Color::Red)),
+            ]),
+            (None, None) => Line::from(vec![
+                Span::styled("● ", Style::default().fg(Color::Green)),
+                Span::styled("Ready", Style::default().fg(Color::White)),
+                Span::styled(" — ", Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    format!("{} pending change(s)", self.change_count),
+                    Style::default().fg(if self.change_count == 0 {
+                        Color::DarkGray
+                    } else {
+                        Color::Green
+                    }),
+                ),
+            ]),
         };
 
-        Paragraph::new(Line::from(status))
+        let controls = Line::from(vec![
+            keycap("Tab"),
+            label(" focus"),
+            separator(),
+            keycap("Space"),
+            label(" select"),
+            separator(),
+            keycap(mode_shortcut()),
+            label(" mode"),
+            separator(),
+            keycap("Enter"),
+            label(" confirm"),
+            separator(),
+            keycap("Esc"),
+            label(" quit"),
+        ]);
+
+        Paragraph::new(vec![status, controls])
             .wrap(Wrap { trim: true })
             .render(area, buffer);
     }
+}
+
+fn keycap(key: &'static str) -> Span<'static> {
+    Span::styled(key, Style::default().fg(Color::Yellow))
+}
+
+fn label(label: &'static str) -> Span<'static> {
+    Span::styled(label, Style::default().fg(Color::DarkGray))
+}
+
+fn separator() -> Span<'static> {
+    Span::styled("  │  ", Style::default().fg(Color::DarkGray))
+}
+
+#[cfg(target_os = "macos")]
+fn mode_shortcut() -> &'static str {
+    "Cmd+R"
+}
+
+#[cfg(not(target_os = "macos"))]
+fn mode_shortcut() -> &'static str {
+    "Ctrl+R"
 }
 
 fn draw_confirmation(frame: &mut Frame, area: Rect, count: usize) {
@@ -218,17 +324,7 @@ fn focus_style(focused: bool) -> Style {
     if focused {
         Style::default().fg(Color::Cyan)
     } else {
-        Style::default()
-    }
-}
-
-fn selection_style(selected: bool) -> Style {
-    if selected {
-        Style::default()
-            .bg(Color::DarkGray)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default()
+        Style::default().fg(Color::DarkGray)
     }
 }
 
@@ -241,4 +337,16 @@ fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
         width,
         height,
     )
+}
+
+fn display_path(path: &std::path::Path) -> String {
+    let displayed = path.display().to_string();
+
+    if let Some(unc_path) = displayed.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{unc_path}")
+    } else if let Some(local_path) = displayed.strip_prefix(r"\\?\") {
+        local_path.to_owned()
+    } else {
+        displayed
+    }
 }

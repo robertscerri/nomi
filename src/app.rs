@@ -86,7 +86,7 @@ impl App {
             return self.handle_confirmation(key);
         }
 
-        if key.modifiers.contains(KeyModifiers::CONTROL) {
+        if shortcut_modifier(key.modifiers) {
             match key.code {
                 KeyCode::Char('r') => {
                     self.mode = match self.mode {
@@ -230,4 +230,9 @@ impl App {
             Focus::Files => Focus::Replacement,
         };
     }
+}
+
+fn shortcut_modifier(modifiers: KeyModifiers) -> bool {
+    modifiers.contains(KeyModifiers::CONTROL)
+        || (cfg!(target_os = "macos") && modifiers.contains(KeyModifiers::SUPER))
 }
