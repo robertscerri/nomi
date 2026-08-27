@@ -1,6 +1,6 @@
 use std::{path::PathBuf, time::Duration};
 
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{Terminal, backend::Backend};
 
 use nomi::{
@@ -35,6 +35,7 @@ impl App {
     pub fn new(directory: PathBuf) -> Result<Self, NomiError> {
         let directory = directory.canonicalize()?;
         let entries = rename::read_entries(&directory)?;
+
         Ok(Self {
             directory,
             entries,
@@ -63,17 +64,24 @@ impl App {
     pub fn run<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> Result<(), NomiError> {
         while !self.should_quit {
             terminal.draw(|frame| ui::draw(frame, self))?;
+
             if event::poll(Duration::from_millis(250))?
                 && let Event::Key(key) = event::read()?
             {
                 self.handle_key(key)?;
             }
         }
+
         Ok(())
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<(), NomiError> {
+        if key.kind == KeyEventKind::Release {
+            return Ok(());
+        }
+
         self.message = None;
+
         if self.confirm {
             return self.handle_confirmation(key);
         }
@@ -98,7 +106,7 @@ impl App {
                     self.should_quit = true;
                     return Ok(());
                 }
-                _ => {}
+                _ => return Ok(()),
             }
         }
 
@@ -125,42 +133,69 @@ impl App {
     fn handle_confirmation(&mut self, key: KeyEvent) -> Result<(), NomiError> {
         match key.code {
             KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
-                let preview = self.preview();
-                rename::execute(&self.directory, &preview.operations)?;
-                let count = preview.operations.len();
-                self.entries = rename::read_entries(&self.directory)?;
-                self.cursor = self.cursor.min(self.entries.len().saturating_sub(1));
-                self.confirm = false;
-                self.message = Some(format!("Renamed {count} item(s)"));
-                self.pattern.clear();
-                self.replacement.clear();
+                self.execute_preview()?;
             }
             KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
                 self.confirm = false;
             }
             _ => {}
         }
+
+        Ok(())
+    }
+
+    fn execute_preview(&mut self) -> Result<(), NomiError> {
+        let preview = self.preview();
+        let count = preview.operations.len();
+
+        if let Err(error) = rename::execute(&self.directory, &preview.operations) {
+            if matches!(error, NomiError::Rollback { .. }) {
+                return Err(error);
+            }
+
+            self.confirm = false;
+            self.message = Some(error.to_string());
+            return Ok(());
+        }
+
+        self.entries = rename::read_entries(&self.directory)?;
+        self.clamp_cursor();
+        self.confirm = false;
+        self.message = Some(format!("Renamed {count} item(s)"));
+        self.pattern.clear();
+        self.replacement.clear();
+
         Ok(())
     }
 
     fn handle_file_key(&mut self, key: KeyEvent) {
         match key.code {
-            KeyCode::Up | KeyCode::Char('k') => {
-                self.cursor = self.cursor.saturating_sub(1);
-            }
-            KeyCode::Down | KeyCode::Char('j') => {
-                self.cursor = (self.cursor + 1).min(self.entries.len().saturating_sub(1));
-            }
+            KeyCode::Up | KeyCode::Char('k') => self.select_previous(),
+            KeyCode::Down | KeyCode::Char('j') => self.select_next(),
             KeyCode::Home => self.cursor = 0,
             KeyCode::End => self.cursor = self.entries.len().saturating_sub(1),
-            KeyCode::Char(' ') => {
-                if let Some(entry) = self.entries.get_mut(self.cursor) {
-                    entry.selected = !entry.selected;
-                }
-            }
+            KeyCode::Char(' ') => self.toggle_selected(),
             KeyCode::Char('q') => self.should_quit = true,
             _ => {}
         }
+    }
+
+    fn select_previous(&mut self) {
+        self.cursor = self.cursor.saturating_sub(1);
+    }
+
+    fn select_next(&mut self) {
+        self.cursor = (self.cursor + 1).min(self.entries.len().saturating_sub(1));
+    }
+
+    fn toggle_selected(&mut self) {
+        if let Some(entry) = self.entries.get_mut(self.cursor) {
+            entry.selected = !entry.selected;
+        }
+    }
+
+    fn clamp_cursor(&mut self) {
+        self.cursor = self.cursor.min(self.entries.len().saturating_sub(1));
     }
 
     fn handle_input_key(&mut self, key: KeyEvent) {
@@ -169,6 +204,7 @@ impl App {
             Focus::Replacement => &mut self.replacement,
             Focus::Files => return,
         };
+
         match key.code {
             KeyCode::Char(character) => input.push(character),
             KeyCode::Backspace => {
