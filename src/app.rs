@@ -3,8 +3,9 @@ use std::path::PathBuf;
 use crossterm::event::KeyCode;
 use ratatui::{
     DefaultTerminal, Frame,
-    layout::{Constraint, Layout},
-    widgets::List,
+    layout::{Alignment, Constraint, Layout},
+    text::Line,
+    widgets::{Block, List},
 };
 
 use nomi::{
@@ -34,7 +35,11 @@ impl<'a> App<'a> {
         pattern.focus();
 
         let replacement = TextInput::new(" Replacement ");
-        let file_list = List::new(entries);
+        let file_list = List::new(entries).block(
+            Block::bordered()
+                .title(format!(" {} ", directory.display()))
+                .title(Line::from(" 5 Items ").alignment(Alignment::Right)),
+        );
         let status_bar = StatusBar::new();
 
         Ok(App {
