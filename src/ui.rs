@@ -14,14 +14,14 @@ use crate::app::{App, Focus};
 const INPUT_HEIGHT: u16 = 3;
 const STATUS_HEIGHT: u16 = 2;
 
-pub fn draw(frame: &mut Frame, app: &mut App) {
+pub fn draw(frame: &mut Frame, app: &App) {
     let area = frame.area();
     let [pattern_area, replacement_area, files_area, status_area] = main_layout(area);
     let preview = app.preview();
 
     draw_inputs(frame, app, pattern_area, replacement_area);
     draw_files(frame, app, &preview, files_area);
-    draw_status(frame, app, &preview, status_area);
+    frame.render_widget(StatusBar::new(app, &preview), status_area);
 
     if app.confirm {
         draw_confirmation(frame, area, preview.operations.len());
@@ -66,15 +66,15 @@ fn draw_inputs(frame: &mut Frame, app: &App, pattern_area: Rect, replacement_are
     }
 }
 
-fn draw_files(frame: &mut Frame, app: &mut App, preview: &RenamePreview, area: Rect) {
+fn draw_files(frame: &mut Frame, app: &App, preview: &RenamePreview, area: Rect) {
     let visible_rows = area.height.saturating_sub(2) as usize;
-    keep_cursor_visible(app, visible_rows);
+    let scroll = app.cursor.saturating_add(1).saturating_sub(visible_rows);
 
     let items = app
         .entries
         .iter()
         .enumerate()
-        .skip(app.scroll)
+        .skip(scroll)
         .take(visible_rows)
         .map(|(index, entry)| file_row(app, preview, index, entry));
 
@@ -103,14 +103,6 @@ fn draw_files(frame: &mut Frame, app: &mut App, preview: &RenamePreview, area: R
         .border_style(focus_style(app.focus == Focus::Files));
 
     frame.render_widget(List::new(items).block(block), area);
-}
-
-fn keep_cursor_visible(app: &mut App, visible_rows: usize) {
-    if app.cursor < app.scroll {
-        app.scroll = app.cursor;
-    } else if visible_rows > 0 && app.cursor >= app.scroll + visible_rows {
-        app.scroll = app.cursor + 1 - visible_rows;
-    }
 }
 
 fn file_row<'a>(
@@ -150,10 +142,6 @@ fn file_row<'a>(
     };
 
     ListItem::new(content)
-}
-
-fn draw_status(frame: &mut Frame, app: &App, preview: &RenamePreview, area: Rect) {
-    frame.render_widget(StatusBar::new(app, preview), area);
 }
 
 struct InputField<'a> {

@@ -48,8 +48,14 @@ impl RenamePreview {
             .enumerate()
             .filter(|(_, entry)| entry.selected)
         {
-            let original = entry.name.to_string_lossy();
-            let Some(destination) = rule.apply(&original) else {
+            let Some(original) = entry.name.to_str() else {
+                preview.error = Some(format!(
+                    "'{}' is not valid UTF-8 and cannot be renamed",
+                    entry.name.to_string_lossy()
+                ));
+                return preview;
+            };
+            let Some(destination) = rule.apply(original) else {
                 continue;
             };
 
@@ -96,6 +102,12 @@ impl RenamePreview {
         let mut destinations: HashMap<String, &Path> = HashMap::new();
 
         for operation in &self.operations {
+            if operation.from.parent() != Some(directory) {
+                return Err(NomiError::Validation(format!(
+                    "'{}' is outside the rename directory",
+                    operation.from.display()
+                )));
+            }
             let name = destination_name(directory, operation)?;
             let key = destination_key(&name);
 

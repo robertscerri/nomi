@@ -50,6 +50,25 @@ fn rejects_duplicate_destinations() {
 }
 
 #[test]
+fn rejects_sources_outside_the_directory() {
+    let temp = tempfile::tempdir().unwrap();
+    let outside = tempfile::tempdir().unwrap();
+    let source = outside.path().join("outside.txt");
+    fs::write(&source, "outside").unwrap();
+    let preview = RenamePreview {
+        names: vec![Some("inside.txt".into())],
+        operations: vec![RenameOp {
+            from: source.clone(),
+            to: temp.path().join("inside.txt"),
+        }],
+        error: None,
+    };
+
+    assert!(preview.execute(temp.path()).is_err());
+    assert!(source.exists());
+}
+
+#[test]
 fn execute_supports_swaps() {
     let temp = tempfile::tempdir().unwrap();
     fs::write(temp.path().join("a.txt"), "A").unwrap();
