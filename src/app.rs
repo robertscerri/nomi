@@ -4,39 +4,44 @@ use crossterm::event::KeyCode;
 use ratatui::{
     DefaultTerminal, Frame,
     layout::{Constraint, Layout},
-    widgets::Block,
+    widgets::List,
 };
 
 use nomi::{
+    core::read_entries,
     error::Result,
     ui::{StatusBar, TextInput},
 };
 
 #[derive(Debug)]
-pub struct App {
+pub struct App<'a> {
     directory: PathBuf,
 
     pattern: TextInput,
     replacement: TextInput,
+    file_list: List<'a>,
     status_bar: StatusBar,
 
     exit: bool,
 }
 
-impl App {
+impl<'a> App<'a> {
     pub fn try_new(directory: PathBuf) -> Result<Self> {
         let directory = directory.canonicalize()?;
+        let entries = read_entries(&directory)?;
 
         let mut pattern = TextInput::new(" Pattern ");
         pattern.focus();
 
         let replacement = TextInput::new(" Replacement ");
+        let file_list = List::new(entries);
         let status_bar = StatusBar::new();
 
         Ok(App {
             directory,
             pattern,
             replacement,
+            file_list,
             status_bar,
             exit: false,
         })
@@ -63,10 +68,7 @@ impl App {
         frame.render_widget(&self.pattern, pattern_area);
         frame.render_widget(&self.replacement, replacement_area);
 
-        frame.render_widget(
-            Block::bordered().title(format!(" {} ", self.directory.display())),
-            file_list_area,
-        );
+        frame.render_widget(&self.file_list, file_list_area);
 
         frame.render_widget(&self.status_bar, status_area);
 
