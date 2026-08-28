@@ -2,7 +2,7 @@
 name = "nomi"
 version = "0.1.0"
 edition = "2024"
-description = "A safe, interactive batch-renaming TUI"
+description = "A small cross-platform terminal UI for batch-renaming files and directories."
 license = "MIT"
 
 [dependencies]
@@ -11,3 +11,10 @@ crossterm = "0.29"
 ratatui = "0.30.2"
 regex = "1.13.1"
 thiserror = "2.0"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
