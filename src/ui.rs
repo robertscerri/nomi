@@ -19,3 +19,11 @@ pub fn display_path(path: &std::path::Path) -> String {
         displayed
     }
 }
+
+#[macro_export]
+macro_rules! pluralise {
+    ($count:expr, $singular:literal, $plural:literal) => {{
+        let count = $count;
+        format!("{} {}", count, if count == 1 { $singular } else { $plural })
+    }};
+}

@@ -1,4 +1,4 @@
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, KeyEvent};
 
 #[derive(Debug, Default)]
 pub struct TextBuffer {
@@ -15,8 +15,8 @@ impl TextBuffer {
         self.cursor
     }
 
-    pub fn handle_key(&mut self, code: KeyCode) {
-        match code {
+    pub fn handle_key(&mut self, key: KeyEvent) {
+        match key.code {
             KeyCode::Char(character) => {
                 self.value.insert(self.cursor, character);
                 self.cursor += character.len_utf8();

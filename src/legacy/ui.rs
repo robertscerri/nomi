@@ -7,7 +7,7 @@ use ratatui::{
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Widget, Wrap},
 };
 
-use nomi::rename::{Entry, MatchMode, RenamePreview};
+use nomi::rename::{Entry, RenamePreview};
 
 use crate::app::{App, Focus};
 
@@ -26,45 +26,6 @@ pub fn draw(frame: &mut Frame, app: &App) {
     if app.confirm {
         draw_confirmation(frame, area, preview.operations.len());
     }
-}
-
-fn draw_files(frame: &mut Frame, app: &App, preview: &RenamePreview, area: Rect) {
-    let visible_rows = area.height.saturating_sub(2) as usize;
-    let scroll = app.cursor.saturating_add(1).saturating_sub(visible_rows);
-
-    let items = app
-        .entries
-        .iter()
-        .enumerate()
-        .skip(scroll)
-        .take(visible_rows)
-        .map(|(index, entry)| file_row(app, preview, index, entry));
-
-    let item_label = if app.entries.len() == 1 {
-        "item"
-    } else {
-        "items"
-    };
-    let path_title = Line::from(vec![
-        Span::styled(" ", Style::default()),
-        Span::styled(
-            display_path(&app.directory),
-            Style::default().fg(Color::Blue),
-        ),
-        Span::styled(" ", Style::default()),
-    ]);
-    let count_title = Line::styled(
-        format!(" {} {item_label} ", app.entries.len()),
-        Style::default().fg(Color::DarkGray),
-    )
-    .right_aligned();
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title_top(path_title)
-        .title_top(count_title)
-        .border_style(focus_style(app.focus == Focus::Files));
-
-    frame.render_widget(List::new(items).block(block), area);
 }
 
 fn file_row<'a>(
@@ -104,18 +65,6 @@ fn file_row<'a>(
     };
 
     ListItem::new(content)
-}
-
-fn mode_title(mode: MatchMode) -> Line<'static> {
-    let (name, color) = match mode {
-        MatchMode::Regex => ("Regex", Color::Magenta),
-        MatchMode::Literal => ("Literal", Color::Blue),
-    };
-
-    Line::from(vec![
-        Span::styled(" ● ", Style::default().fg(color)),
-        Span::styled(format!("{name} "), Style::default().fg(Color::Reset)),
-    ])
 }
 
 struct StatusBar<'a> {
@@ -211,16 +160,4 @@ fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
         width,
         height,
     )
-}
-
-fn display_path(path: &std::path::Path) -> String {
-    let displayed = path.display().to_string();
-
-    if let Some(unc_path) = displayed.strip_prefix(r"\\?\UNC\") {
-        format!(r"\\{unc_path}")
-    } else if let Some(local_path) = displayed.strip_prefix(r"\\?\") {
-        local_path.to_owned()
-    } else {
-        displayed
-    }
 }

@@ -1,18 +1,32 @@
-use std::path::PathBuf;
+use std::{fmt::Display, path::PathBuf};
 
-use crossterm::event::{KeyCode, KeyEvent};
+#[cfg(target_os = "macos")]
+use crossterm::event::KeyModifiers;
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
     DefaultTerminal, Frame,
     layout::{Constraint, Layout, Rect},
+    style::{Color, Style},
+    text::{Line, Span},
     widgets::List,
 };
 
 use nomi::{core::read_entries, error::Result};
 
-use crate::ui::{Panel, StatusBar, TextBuffer, TextInput, display_path, inner_area};
+use crate::{
+    pluralise,
+    ui::{Panel, StatusBar, TextBuffer, TextInput, display_path, inner_area},
+};
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg(target_os = "macos")]
+const MODIFIER_KEY: KeyModifiers = KeyModifiers::SUPER;
+
+#[cfg(not(target_os = "macos"))]
+const MODIFIER_KEY: KeyModifiers = KeyModifiers::CONTROL;
+
+#[derive(Default, Clone, Copy, Debug, Eq, PartialEq)]
 enum Focus {
+    #[default]
     Pattern,
     Replacement,
     FileList,
@@ -21,10 +35,42 @@ enum Focus {
 impl Focus {
     fn next(self) -> Self {
         match self {
-            Self::Pattern => Self::Replacement,
-            Self::Replacement => Self::FileList,
-            Self::FileList => Self::Pattern,
+            Focus::Pattern => Focus::Replacement,
+            Focus::Replacement => Focus::FileList,
+            Focus::FileList => Focus::Pattern,
         }
+    }
+}
+
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq)]
+enum MatchMode {
+    #[default]
+    Literal,
+    Regex,
+}
+
+impl MatchMode {
+    pub fn toggle(self) -> Self {
+        match self {
+            MatchMode::Literal => MatchMode::Regex,
+            MatchMode::Regex => MatchMode::Literal,
+        }
+    }
+
+    pub fn colour(&self) -> Color {
+        match self {
+            MatchMode::Literal => Color::Blue,
+            MatchMode::Regex => Color::Magenta,
+        }
+    }
+}
+
+impl Display for MatchMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            MatchMode::Literal => "Literal",
+            MatchMode::Regex => "Regex",
+        })
     }
 }
 
@@ -35,6 +81,7 @@ pub struct App {
     pattern: TextBuffer,
     replacement: TextBuffer,
     focus: Focus,
+    match_mode: MatchMode,
     exit: bool,
 }
 
@@ -48,7 +95,8 @@ impl App {
             entries,
             pattern: TextBuffer::default(),
             replacement: TextBuffer::default(),
-            focus: Focus::Pattern,
+            focus: Focus::default(),
+            match_mode: MatchMode::default(),
             exit: false,
         })
     }
@@ -76,6 +124,13 @@ impl App {
                 TextInput::new(self.pattern.value(), self.pattern.cursor()),
                 " Pattern ",
             )
+            .right_title(Line::from(vec![
+                Span::styled(" ● ", self.match_mode.colour()),
+                Span::styled(
+                    format!("{} ", self.match_mode),
+                    Style::default().fg(Color::Reset),
+                ),
+            ]))
             .focused(self.focus == Focus::Pattern),
             pattern_area,
         );
@@ -94,7 +149,10 @@ impl App {
                 List::new(self.entries.iter().map(String::as_str)),
                 format!(" {} ", display_path(self.directory.as_path())),
             )
-            .right_title(format!(" {} items ", self.entries.len()))
+            .right_title(format!(
+                " {} ",
+                pluralise!(self.entries.len(), "item", "items")
+            ))
             .focused(self.focus == Focus::FileList),
             file_list_area,
         );
@@ -124,14 +182,25 @@ impl App {
     }
 
     fn handle_key(&mut self, key: KeyEvent) {
-        match key.code {
-            KeyCode::Esc => self.exit = true,
-            KeyCode::Tab => self.focus = self.focus.next(),
-            _ => match self.focus {
-                Focus::Pattern => self.pattern.handle_key(key.code),
-                Focus::Replacement => self.replacement.handle_key(key.code),
-                Focus::FileList => {}
-            },
+        if key.modifiers.contains(MODIFIER_KEY) {
+            match key.code {
+                KeyCode::Char('r') => self.match_mode = self.match_mode.toggle(),
+                _ => self.handle_focused_key(key),
+            }
+        } else {
+            match key.code {
+                KeyCode::Esc => self.exit = true,
+                KeyCode::Tab => self.focus = self.focus.next(),
+                _ => self.handle_focused_key(key),
+            }
+        }
+    }
+
+    fn handle_focused_key(&mut self, key: KeyEvent) {
+        match self.focus {
+            Focus::Pattern => self.pattern.handle_key(key),
+            Focus::Replacement => self.replacement.handle_key(key),
+            Focus::FileList => {}
         }
     }
 }
