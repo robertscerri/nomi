@@ -81,6 +81,7 @@ pub struct App {
     focus: Focus,
     match_mode: MatchMode,
     preview_error: Option<Error>,
+    confirming: bool,
     exit: bool,
 }
 
@@ -97,6 +98,7 @@ impl App {
             focus: Focus::default(),
             match_mode: MatchMode::default(),
             preview_error: None,
+            confirming: false,
             exit: false,
         })
     }
@@ -146,7 +148,7 @@ impl App {
 
         frame.render_widget(
             Panel::new(
-                FileList::new(&self.entries, self.preview_error.as_ref()),
+                FileList::new(&self.entries, self.preview_error.as_ref(), self.confirming),
                 format!(" {} ", display_path(self.directory.as_path())),
             )
             .right_title(format!(
@@ -182,6 +184,15 @@ impl App {
     }
 
     fn handle_key(&mut self, key: KeyEvent) {
+        if self.confirming {
+            match key.code {
+                KeyCode::Enter => self.execute_renames(),
+                KeyCode::Esc => self.confirming = false,
+                _ => {}
+            }
+            return;
+        }
+
         if key.modifiers.contains(MODIFIER_KEY) {
             match key.code {
                 KeyCode::Char('r') => {
@@ -194,6 +205,9 @@ impl App {
             match key.code {
                 KeyCode::Esc => self.exit = true,
                 KeyCode::Tab => self.focus = self.focus.next(),
+                KeyCode::Enter if self.preview_error.is_none() && self.has_renames() => {
+                    self.confirming = true
+                }
                 _ => self.handle_focused_key(key),
             }
         }
@@ -231,6 +245,32 @@ impl App {
             }
             Err(error) => self.preview_error = Some(error),
         }
+    }
+
+    fn has_renames(&self) -> bool {
+        self.entries
+            .selected_values()
+            .any(|rename| rename.source() != rename.destination())
+    }
+
+    fn execute_renames(&mut self) {
+        let result = self
+            .entries
+            .selected_values()
+            .try_for_each(|rename| rename.execute(&self.directory));
+
+        match read_entries(&self.directory) {
+            Ok(entries) => {
+                self.entries = Selection::new(entries.into_iter().map(Rename::new));
+                self.refresh_preview();
+                if let Err(error) = result {
+                    self.preview_error = Some(error);
+                }
+            }
+            Err(error) => self.preview_error = Some(error),
+        }
+
+        self.confirming = false;
     }
 }
 

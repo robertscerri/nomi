@@ -13,11 +13,16 @@ use crate::{rename::Rename, selection::Selection, ui::MODIFIER_KEY};
 pub struct FileList<'a> {
     entries: &'a Selection<Rename>,
     error: Option<&'a Error>,
+    confirming: bool,
 }
 
 impl<'a> FileList<'a> {
-    pub fn new(entries: &'a Selection<Rename>, error: Option<&'a Error>) -> Self {
-        Self { entries, error }
+    pub fn new(entries: &'a Selection<Rename>, error: Option<&'a Error>, confirming: bool) -> Self {
+        Self {
+            entries,
+            error,
+            confirming,
+        }
     }
 
     pub fn handle_key(entries: &mut Selection<Rename>, key: KeyEvent) {
@@ -36,6 +41,13 @@ impl Widget for FileList<'_> {
         if let Some(error) = self.error {
             Paragraph::new(error.to_string())
                 .style(Style::default().fg(Color::Red))
+                .render(area, buf);
+            return;
+        }
+
+        if self.confirming {
+            Paragraph::new("Press Enter to rename selected items, or Esc to cancel.")
+                .style(Style::default().fg(Color::Yellow))
                 .render(area, buf);
             return;
         }

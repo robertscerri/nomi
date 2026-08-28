@@ -20,6 +20,13 @@ impl<T> Selection<T> {
         self.items.iter_mut().map(|item| &mut item.value)
     }
 
+    pub fn selected_values(&self) -> impl Iterator<Item = &T> {
+        self.items
+            .iter()
+            .filter(|item| item.selected)
+            .map(|item| &item.value)
+    }
+
     pub fn len(&self) -> usize {
         self.items.len()
     }

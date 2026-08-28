@@ -1,6 +1,8 @@
+use std::{fs, path::Path};
+
 use regex::Regex;
 
-use nomi::error::Result;
+use nomi::error::{Error, Result};
 
 use crate::app::MatchMode;
 
@@ -63,5 +65,22 @@ impl Rename {
 
     pub fn preview(&mut self, config: &RenameConfig) {
         self.destination = config.apply(&self.source);
+    }
+
+    pub fn execute(&self, directory: &Path) -> Result<()> {
+        if self.source == self.destination {
+            return Ok(());
+        }
+
+        let destination = Path::new(&self.destination);
+        if self.destination.is_empty() || destination.file_name() != Some(destination.as_os_str()) {
+            return Err(Error::Validation(format!(
+                "'{}' is not a valid filename",
+                self.destination
+            )));
+        }
+
+        fs::rename(directory.join(&self.source), directory.join(destination))?;
+        Ok(())
     }
 }
