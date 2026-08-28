@@ -26,11 +26,12 @@ holds the selected directory, entries, input values, input cursors, and one
 `Focus` value. Keyboard events mutate that state, then each draw constructs
 short-lived views borrowing immutable data from `App`.
 
-`ui.rs` is internal to the binary. `TextInput` and `FileList` are stateless views
-that do not own titles, focus, or application data. `Panel` wraps any child view
-and receives its titles and focus styling from `App`, allowing block presentation
-to change in response to app-level state without coupling leaf widgets to it.
-Horizontal input scrolling is derived from the cursor and the panel's inner area.
+`ui.rs` is internal to the binary. `TextInput` is a stateless view, while the file
+list uses Ratatui's `List` directly; neither owns titles, focus, or application
+data. `Panel` wraps any child view and receives its titles and focus styling from
+`App`, allowing block presentation to change in response to app-level state
+without coupling leaf widgets to it. Horizontal input scrolling is derived from
+the cursor and the panel's inner area.
 
 ## Main boundaries for a rewrite
 

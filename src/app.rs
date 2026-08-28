@@ -4,11 +4,12 @@ use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     DefaultTerminal, Frame,
     layout::{Constraint, Layout, Rect},
+    widgets::List,
 };
 
 use nomi::{core::read_entries, error::Result};
 
-use crate::ui::{FileList, Panel, StatusBar, TextInput, inner_area};
+use crate::ui::{Panel, StatusBar, TextInput, inner_area};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Focus {
@@ -94,7 +95,7 @@ impl App {
 
         frame.render_widget(
             Panel::new(
-                FileList::new(&self.entries),
+                List::new(self.entries.iter().map(String::as_str)),
                 format!(" {} ", self.directory.display()),
             )
             .right_title(format!(" {} items ", self.entries.len()))
