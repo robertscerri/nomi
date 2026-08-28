@@ -4,16 +4,16 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
     DefaultTerminal, Frame,
     layout::{Constraint, Layout, Rect},
-    style::{Color, Style},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::List,
+    widgets::{List, ListItem, ListState},
 };
 
 use nomi::{core::read_entries, error::Result};
 
 use crate::{
     pluralise,
-    ui::{Panel, StatusBar, TextBuffer, TextInput, display_path, inner_area},
+    ui::{Panel, Stateful, StatusBar, TextBuffer, TextInput, display_path, inner_area},
 };
 
 #[cfg(target_os = "macos")]
@@ -73,9 +73,25 @@ impl Display for MatchMode {
 }
 
 #[derive(Debug)]
+struct FileEntry {
+    name: String,
+    selected: bool,
+}
+
+impl FileEntry {
+    fn new(name: String) -> Self {
+        Self {
+            name,
+            selected: true,
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct App {
     directory: PathBuf,
-    entries: Vec<String>,
+    entries: Vec<FileEntry>,
+    highlighted_entry: Option<usize>,
     pattern: TextBuffer,
     replacement: TextBuffer,
     focus: Focus,
@@ -86,11 +102,16 @@ pub struct App {
 impl App {
     pub fn try_new(directory: PathBuf) -> Result<Self> {
         let directory = directory.canonicalize()?;
-        let entries = read_entries(&directory)?;
+        let entries: Vec<_> = read_entries(&directory)?
+            .into_iter()
+            .map(FileEntry::new)
+            .collect();
+        let highlighted_entry = (!entries.is_empty()).then_some(0);
 
         Ok(Self {
             directory,
             entries,
+            highlighted_entry,
             pattern: TextBuffer::default(),
             replacement: TextBuffer::default(),
             focus: Focus::default(),
@@ -142,9 +163,29 @@ impl App {
             replacement_area,
         );
 
+        let file_items = self.entries.iter().map(|entry| {
+            let marker = if entry.selected { "[x]" } else { "[ ]" };
+            let marker_style = if entry.selected {
+                Style::default().fg(Color::Green)
+            } else {
+                Style::default().dim()
+            };
+
+            ListItem::new(Line::from(vec![
+                Span::styled(marker, marker_style),
+                Span::raw(format!(" {}", entry.name)),
+            ]))
+        });
+
+        let file_list = List::new(file_items)
+            .highlight_symbol("› ")
+            .highlight_style(Style::default().add_modifier(Modifier::BOLD));
+
+        let file_list_state = ListState::default().with_selected(self.highlighted_entry);
+
         frame.render_widget(
             Panel::new(
-                List::new(self.entries.iter().map(String::as_str)),
+                Stateful::new(file_list, file_list_state),
                 format!(" {} ", display_path(self.directory.as_path())),
             )
             .right_title(format!(
@@ -198,7 +239,48 @@ impl App {
         match self.focus {
             Focus::Pattern => self.pattern.handle_key(key),
             Focus::Replacement => self.replacement.handle_key(key),
-            Focus::FileList => {}
+            Focus::FileList => self.handle_file_list_key(key),
+        }
+    }
+
+    fn handle_file_list_key(&mut self, key: KeyEvent) {
+        match key.code {
+            KeyCode::Up => self.highlight_previous_entry(),
+            KeyCode::Down => self.highlight_next_entry(),
+            KeyCode::Char(' ') => self.toggle_highlighted_entry(),
+            KeyCode::Char('a') if key.modifiers.contains(MODIFIER_KEY) => self.toggle_all_entries(),
+            _ => {}
+        }
+    }
+
+    fn highlight_previous_entry(&mut self) {
+        if let Some(highlighted) = self.highlighted_entry.as_mut() {
+            *highlighted = highlighted.saturating_sub(1);
+        }
+    }
+
+    fn highlight_next_entry(&mut self) {
+        if let Some(highlighted) = self.highlighted_entry.as_mut() {
+            *highlighted = highlighted
+                .saturating_add(1)
+                .min(self.entries.len().saturating_sub(1));
+        }
+    }
+
+    fn toggle_highlighted_entry(&mut self) {
+        if let Some(entry) = self
+            .highlighted_entry
+            .and_then(|highlighted| self.entries.get_mut(highlighted))
+        {
+            entry.selected = !entry.selected;
+        }
+    }
+
+    fn toggle_all_entries(&mut self) {
+        let selected = !self.entries.iter().all(|entry| entry.selected);
+
+        for entry in &mut self.entries {
+            entry.selected = selected;
         }
     }
 }
