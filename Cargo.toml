@@ -3,6 +3,7 @@ name = "nomi"
 version = "0.1.0"
 edition = "2024"
 description = "A small cross-platform terminal UI for batch-renaming files and directories."
+authors = ["Robert Scerri"]
 license = "MIT"
 
 [dependencies]
