@@ -24,10 +24,5 @@ fn run() -> Result<()> {
 
     ratatui::run(|terminal| App::try_new(directory)?.run(terminal))?;
 
-    // TODO
-    // Initialise app
-    // Setup terminal
-    // Run
-
     Ok(())
 }
