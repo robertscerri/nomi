@@ -146,7 +146,7 @@ impl App {
 
         frame.render_widget(
             Panel::new(
-                FileList::new(&self.entries, self.preview_error.is_none()),
+                FileList::new(&self.entries, self.preview_error.as_ref()),
                 format!(" {} ", display_path(self.directory.as_path())),
             )
             .right_title(format!(

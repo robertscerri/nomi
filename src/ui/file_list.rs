@@ -1,22 +1,23 @@
 use crossterm::event::{KeyCode, KeyEvent};
+use nomi::error::Error;
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
     style::{Color, Style},
     text::{Line, Span},
-    widgets::{List, ListItem, ListState, StatefulWidget, Widget},
+    widgets::{List, ListItem, ListState, Paragraph, StatefulWidget, Widget},
 };
 
 use crate::{rename::Rename, selection::Selection, ui::MODIFIER_KEY};
 
 pub struct FileList<'a> {
     entries: &'a Selection<Rename>,
-    visible: bool,
+    error: Option<&'a Error>,
 }
 
 impl<'a> FileList<'a> {
-    pub fn new(entries: &'a Selection<Rename>, visible: bool) -> Self {
-        Self { entries, visible }
+    pub fn new(entries: &'a Selection<Rename>, error: Option<&'a Error>) -> Self {
+        Self { entries, error }
     }
 
     pub fn handle_key(entries: &mut Selection<Rename>, key: KeyEvent) {
@@ -32,7 +33,10 @@ impl<'a> FileList<'a> {
 
 impl Widget for FileList<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        if !self.visible {
+        if let Some(error) = self.error {
+            Paragraph::new(error.to_string())
+                .style(Style::default().fg(Color::Red))
+                .render(area, buf);
             return;
         }
 
@@ -58,7 +62,7 @@ impl Widget for FileList<'_> {
                 Span::styled(entry.value().source(), item_style),
             ];
 
-            if entry.value().destination() != entry.value().source() {
+            if entry.is_selected() && entry.value().destination() != entry.value().source() {
                 line_items.push(Span::styled(" › ", Style::default().fg(Color::Magenta)));
                 line_items.push(Span::styled(
                     entry.value().destination(),
