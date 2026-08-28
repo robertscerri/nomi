@@ -6,7 +6,7 @@ use ratatui::{
     widgets::{Block, Paragraph, Widget},
 };
 
-use crate::ui::{BlockBuilder, FocusTarget};
+use crate::ui::{BlockBuilder, FocusTarget, Interactive};
 
 #[derive(Debug)]
 pub struct TextInput {
@@ -23,32 +23,6 @@ impl TextInput {
             value: String::new(),
             cursor: 0,
             focused: false,
-        }
-    }
-
-    pub fn handle_key(&mut self, key: KeyEvent) {
-        match key.code {
-            KeyCode::Char(c) => {
-                self.value.insert(self.cursor, c);
-                self.cursor += c.len_utf8();
-            }
-
-            KeyCode::Backspace => {
-                if self.cursor > 0 {
-                    let previous = self.previous_char_boundary();
-                    self.value.replace_range(previous..self.cursor, "");
-                    self.cursor = previous;
-                }
-            }
-            KeyCode::Delete if self.cursor < self.value.len() => {
-                self.value
-                    .replace_range(self.cursor..self.next_char_boundary(), "");
-            }
-            KeyCode::Left => self.cursor = self.previous_char_boundary(),
-            KeyCode::Right => self.cursor = self.next_char_boundary(),
-            KeyCode::Home => self.cursor = 0,
-            KeyCode::End => self.cursor = self.value.len(),
-            _ => {}
         }
     }
 
@@ -109,6 +83,34 @@ impl Widget for &TextInput {
             .block(block)
             .scroll((0, scroll as u16))
             .render(area, buf);
+    }
+}
+
+impl Interactive for TextInput {
+    fn handle_key(&mut self, key: KeyEvent) {
+        match key.code {
+            KeyCode::Char(c) => {
+                self.value.insert(self.cursor, c);
+                self.cursor += c.len_utf8();
+            }
+
+            KeyCode::Backspace => {
+                if self.cursor > 0 {
+                    let previous = self.previous_char_boundary();
+                    self.value.replace_range(previous..self.cursor, "");
+                    self.cursor = previous;
+                }
+            }
+            KeyCode::Delete if self.cursor < self.value.len() => {
+                self.value
+                    .replace_range(self.cursor..self.next_char_boundary(), "");
+            }
+            KeyCode::Left => self.cursor = self.previous_char_boundary(),
+            KeyCode::Right => self.cursor = self.next_char_boundary(),
+            KeyCode::Home => self.cursor = 0,
+            KeyCode::End => self.cursor = self.value.len(),
+            _ => {}
+        }
     }
 }
 

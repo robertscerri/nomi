@@ -72,9 +72,7 @@ impl<'a> App<'a> {
 
         frame.render_widget(&self.pattern, pattern_area);
         frame.render_widget(&self.replacement, replacement_area);
-
         frame.render_widget(&self.file_list, file_list_area);
-
         frame.render_widget(&self.status_bar, status_area);
 
         if self.pattern.is_focused() {
