@@ -7,7 +7,10 @@ use ratatui::{
     widgets::Block,
 };
 
-use nomi::{error::Result, ui::TextInput};
+use nomi::{
+    error::Result,
+    ui::{StatusBar, TextInput},
+};
 
 #[derive(Debug)]
 pub struct App {
@@ -15,6 +18,7 @@ pub struct App {
 
     pattern: TextInput,
     replacement: TextInput,
+    status_bar: StatusBar,
 
     exit: bool,
 }
@@ -24,14 +28,16 @@ impl App {
         let directory = directory.canonicalize()?;
 
         let mut pattern = TextInput::new(" Pattern ");
-        let replacement = TextInput::new(" Replacement ");
-
         pattern.focus();
+
+        let replacement = TextInput::new(" Replacement ");
+        let status_bar = StatusBar::new();
 
         Ok(App {
             directory,
             pattern,
             replacement,
+            status_bar,
             exit: false,
         })
     }
@@ -61,7 +67,8 @@ impl App {
             Block::bordered().title(format!(" {} ", self.directory.display())),
             file_list_area,
         );
-        frame.render_widget(Block::new(), status_area);
+
+        frame.render_widget(&self.status_bar, status_area);
 
         if self.pattern.is_focused() {
             frame.set_cursor_position(self.pattern.cursor_position(pattern_area));

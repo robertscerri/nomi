@@ -160,23 +160,6 @@ impl Widget for StatusBar<'_> {
             ]),
         };
 
-        let controls = Line::from(vec![
-            keycap("Tab"),
-            label(" focus"),
-            separator(),
-            keycap("Space"),
-            label(" select"),
-            separator(),
-            keycap("Ctrl+R"),
-            label(" mode"),
-            separator(),
-            keycap("Enter"),
-            label(" confirm"),
-            separator(),
-            keycap("Esc"),
-            label(" quit"),
-        ]);
-
         let [status_area, controls_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Length(1)]).areas(area);
         let identity = Line::from(vec![
@@ -194,9 +177,6 @@ impl Widget for StatusBar<'_> {
                 .alignment(Alignment::Right)
                 .render(status_area, buffer);
         }
-        Paragraph::new(controls)
-            .wrap(Wrap { trim: true })
-            .render(controls_area, buffer);
     }
 }
 
