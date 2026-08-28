@@ -19,17 +19,17 @@ nomi path/to/photos
 
 ## Controls
 
-| Key | Action |
-| --- | --- |
-| `Tab` | Move between inputs and file list |
-| `Left` / `Right`, `Home` / `End` | Move within an input |
-| `Backspace` / `Delete` | Remove text before or after the cursor |
-| `Ctrl+R` (`Cmd+R` on macOS) | Toggle regex/literal mode |
-| `Up` / `Down` | Move through files |
-| `Space` | Include or exclude the highlighted item |
-| `Ctrl+A` (`Cmd+A` on macOS) | Select or clear all items |
-| `Enter` | Open confirmation; press again to execute |
-| `Esc` | Cancel confirmation, or quit normally |
+| Key                              | Action                                    |
+| -------------------------------- | ----------------------------------------- |
+| `Tab` / `Shift+Tab`              | Move between inputs and file list         |
+| `Left` / `Right`, `Home` / `End` | Move within an input                      |
+| `Backspace` / `Delete`           | Remove text before or after the cursor    |
+| `Ctrl+R` (`Cmd+R` on macOS)      | Toggle regex/literal mode                 |
+| `Up` / `Down`                    | Move through files                        |
+| `Space`                          | Include or exclude the highlighted item   |
+| `Ctrl+A` (`Cmd+A` on macOS)      | Select or clear all items                 |
+| `Enter`                          | Open confirmation; press again to execute |
+| `Esc`                            | Cancel confirmation, or quit normally     |
 
 Regex replacement uses `$1` or `${name}` capture syntax. For example, the pattern
 `^IMG_(\d+)\.jpg$` and replacement `holiday_$1.jpg` changes `IMG_001.jpg` to

@@ -38,6 +38,14 @@ impl Focus {
             Focus::FileList => Focus::Pattern,
         }
     }
+
+    fn previous(self) -> Self {
+        match self {
+            Focus::Pattern => Focus::FileList,
+            Focus::Replacement => Focus::Pattern,
+            Focus::FileList => Focus::Replacement,
+        }
+    }
 }
 
 #[derive(Default, Clone, Copy, Debug, PartialEq, Eq)]
@@ -205,6 +213,7 @@ impl App {
             match key.code {
                 KeyCode::Esc => self.exit = true,
                 KeyCode::Tab => self.focus = self.focus.next(),
+                KeyCode::BackTab => self.focus = self.focus.previous(),
                 KeyCode::Enter if self.preview_error.is_none() && self.has_renames() => {
                     self.confirming = true
                 }
