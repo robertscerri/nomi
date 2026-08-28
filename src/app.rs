@@ -59,23 +59,24 @@ impl App {
         ])
         .areas(frame.area());
 
-        self.pattern.render(
-            frame,
-            pattern_area,
-            matches!(self.focused, FocusedField::Pattern),
-        );
-
-        self.replacement.render(
-            frame,
-            replacement_area,
-            matches!(self.focused, FocusedField::Replacement),
-        );
+        frame.render_widget(&self.pattern, pattern_area);
+        frame.render_widget(&self.replacement, replacement_area);
 
         frame.render_widget(
             Block::bordered().title(format!(" {} ", self.directory.display())),
             file_list_area,
         );
         frame.render_widget(Block::new(), status_area);
+
+        match self.focused {
+            FocusedField::Pattern => {
+                frame.set_cursor_position(self.pattern.cursor_position(pattern_area));
+            }
+            FocusedField::Replacement => {
+                frame.set_cursor_position(self.replacement.cursor_position(replacement_area));
+            }
+            FocusedField::FileList => {}
+        }
     }
 
     fn handle_events(&mut self) -> Result<()> {

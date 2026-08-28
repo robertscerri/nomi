@@ -1,10 +1,9 @@
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
-    Frame,
+    buffer::Buffer,
     layout::Rect,
-    style::{Color, Style},
     text::Line,
-    widgets::{Block, Borders, Paragraph},
+    widgets::{Block, Paragraph, Widget},
 };
 
 #[derive(Debug)]
@@ -58,33 +57,18 @@ impl TextInput {
         self.cursor = 0;
     }
 
-    pub fn render(&self, frame: &mut Frame, area: Rect, focused: bool) {
-        let style = if focused {
-            Style::default().fg(Color::Cyan)
-        } else {
-            Style::default().dim()
-        };
+    pub fn cursor_position(&self, area: Rect) -> (u16, u16) {
+        let (inner, cursor_column, scroll) = self.viewport(area);
 
-        let block = Block::default()
-            .title(self.title)
-            .borders(Borders::ALL)
-            .border_style(style);
+        (inner.x + (cursor_column - scroll) as u16, inner.y)
+    }
 
-        let inner = block.inner(area);
+    fn viewport(&self, area: Rect) -> (Rect, usize, usize) {
+        let inner = Block::bordered().inner(area);
         let cursor_column = Line::raw(&self.value[..self.cursor]).width();
         let scroll = cursor_column.saturating_sub(inner.width.saturating_sub(1) as usize);
 
-        frame.render_widget(
-            Paragraph::new(self.value.as_str())
-                .block(block)
-                .scroll((0, scroll as u16)),
-            area,
-        );
-
-        if focused {
-            let cursor_position = inner.x + (cursor_column - scroll) as u16;
-            frame.set_cursor_position((cursor_position, inner.y));
-        }
+        (inner, cursor_column, scroll)
     }
 
     fn previous_char_boundary(&self) -> usize {
@@ -105,5 +89,17 @@ impl TextInput {
             .nth(1)
             .map(|(i, _)| self.cursor + i)
             .unwrap_or(self.value.len())
+    }
+}
+
+impl Widget for &TextInput {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        let block = Block::bordered().title(self.title);
+        let (_, _, scroll) = self.viewport(area);
+
+        Paragraph::new(self.value.as_str())
+            .block(block)
+            .scroll((0, scroll as u16))
+            .render(area, buf);
     }
 }
