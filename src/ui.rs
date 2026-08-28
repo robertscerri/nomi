@@ -12,10 +12,6 @@ pub use text_input::TextInput;
 
 use crossterm::event::KeyModifiers;
 
-#[cfg(target_os = "macos")]
-pub const MODIFIER_KEY: KeyModifiers = KeyModifiers::SUPER;
-
-#[cfg(not(target_os = "macos"))]
 pub const MODIFIER_KEY: KeyModifiers = KeyModifiers::CONTROL;
 
 pub fn display_path(path: &std::path::Path) -> String {
