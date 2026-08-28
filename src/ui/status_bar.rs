@@ -33,7 +33,7 @@ impl StatusBar {
     }
 }
 
-impl Widget for &StatusBar {
+impl Widget for StatusBar {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let [status_area, controls_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Length(1)]).areas(area);

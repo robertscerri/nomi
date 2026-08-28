@@ -1,54 +1,23 @@
-use std::path::PathBuf;
-
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
     widgets::{List, Widget},
 };
 
-use crate::ui::{BlockBuilder, FocusTarget};
-
+// TODO: Do we need FileList?
 #[derive(Debug)]
-pub struct FileList {
-    directory: PathBuf,
-    entries: Vec<String>,
-    focused: bool,
+pub struct FileList<'a> {
+    entries: &'a [String],
 }
 
-impl FileList {
-    pub fn new(directory: PathBuf, entries: Vec<String>) -> Self {
-        FileList {
-            directory,
-            entries,
-            focused: false,
-        }
+impl<'a> FileList<'a> {
+    pub fn new(entries: &'a [String]) -> Self {
+        Self { entries }
     }
 }
 
-impl Widget for &FileList {
+impl Widget for FileList<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let block = BlockBuilder::new()
-            .title(format!(" {} ", self.directory.display()))
-            .right_title(format!(" {} items ", self.entries.len()))
-            .focused(self.is_focused())
-            .build();
-
-        List::new(self.entries.iter().map(String::as_str))
-            .block(block)
-            .render(area, buf);
-    }
-}
-
-impl FocusTarget for FileList {
-    fn focus(&mut self) {
-        self.focused = true;
-    }
-
-    fn blur(&mut self) {
-        self.focused = false;
-    }
-
-    fn is_focused(&self) -> bool {
-        self.focused
+        List::new(self.entries.iter().map(String::as_str)).render(area, buf);
     }
 }

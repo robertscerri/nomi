@@ -1,24 +1,41 @@
 use std::path::PathBuf;
 
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     DefaultTerminal, Frame,
-    layout::{Constraint, Layout},
+    layout::{Constraint, Layout, Rect},
 };
 
-use nomi::{
-    core::read_entries,
-    error::Result,
-    ui::{FileList, FocusTarget, Interactive, StatusBar, TextInput},
-};
+use nomi::{core::read_entries, error::Result};
+
+use crate::ui::{FileList, Panel, StatusBar, TextInput, inner_area};
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Focus {
+    Pattern,
+    Replacement,
+    FileList,
+}
+
+impl Focus {
+    fn next(self) -> Self {
+        match self {
+            Self::Pattern => Self::Replacement,
+            Self::Replacement => Self::FileList,
+            Self::FileList => Self::Pattern,
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct App {
-    pattern: TextInput,
-    replacement: TextInput,
-    file_list: FileList,
-    status_bar: StatusBar,
-
+    directory: PathBuf,
+    entries: Vec<String>,
+    pattern: String,
+    pattern_cursor: usize,
+    replacement: String,
+    replacement_cursor: usize,
+    focus: Focus,
     exit: bool,
 }
 
@@ -27,18 +44,14 @@ impl App {
         let directory = directory.canonicalize()?;
         let entries = read_entries(&directory)?;
 
-        let mut pattern = TextInput::new(" Pattern ");
-        pattern.focus();
-
-        let replacement = TextInput::new(" Replacement ");
-        let file_list = FileList::new(directory, entries);
-        let status_bar = StatusBar::new();
-
-        Ok(App {
-            pattern,
-            replacement,
-            file_list,
-            status_bar,
+        Ok(Self {
+            directory,
+            entries,
+            pattern: String::new(),
+            pattern_cursor: 0,
+            replacement: String::new(),
+            replacement_cursor: 0,
+            focus: Focus::Pattern,
             exit: false,
         })
     }
@@ -61,48 +74,120 @@ impl App {
         ])
         .areas(frame.area());
 
-        frame.render_widget(&self.pattern, pattern_area);
-        frame.render_widget(&self.replacement, replacement_area);
-        frame.render_widget(&self.file_list, file_list_area);
-        frame.render_widget(&self.status_bar, status_area);
+        frame.render_widget(
+            Panel::new(
+                TextInput::new(&self.pattern, self.pattern_cursor),
+                " Pattern ",
+            )
+            .focused(self.focus == Focus::Pattern),
+            pattern_area,
+        );
 
-        if self.pattern.is_focused() {
-            frame.set_cursor_position(self.pattern.cursor_position(pattern_area));
-        } else if self.replacement.is_focused() {
-            frame.set_cursor_position(self.replacement.cursor_position(replacement_area));
+        frame.render_widget(
+            Panel::new(
+                TextInput::new(&self.replacement, self.replacement_cursor),
+                " Replacement ",
+            )
+            .focused(self.focus == Focus::Replacement),
+            replacement_area,
+        );
+
+        frame.render_widget(
+            Panel::new(
+                FileList::new(&self.entries),
+                format!(" {} ", self.directory.display()),
+            )
+            .right_title(format!(" {} items ", self.entries.len()))
+            .focused(self.focus == Focus::FileList),
+            file_list_area,
+        );
+
+        frame.render_widget(StatusBar::new(), status_area);
+
+        match self.focus {
+            Focus::Pattern => {
+                self.set_text_cursor(frame, pattern_area, &self.pattern, self.pattern_cursor)
+            }
+            Focus::Replacement => self.set_text_cursor(
+                frame,
+                replacement_area,
+                &self.replacement,
+                self.replacement_cursor,
+            ),
+            Focus::FileList => {}
         }
     }
 
+    fn set_text_cursor(&self, frame: &mut Frame, area: Rect, value: &str, cursor: usize) {
+        let input = TextInput::new(value, cursor);
+        frame.set_cursor_position(input.cursor_position(inner_area(area)));
+    }
+
     fn handle_events(&mut self) -> Result<()> {
-        if let crossterm::event::Event::Key(key) = crossterm::event::read()? {
-            // Only handle event when key is pressed down
-            if !key.is_press() {
-                return Ok(());
-            }
-
-            match key.code {
-                KeyCode::Esc => self.exit = true,
-                KeyCode::Tab => self.change_focus(),
-
-                _ if self.pattern.is_focused() => self.pattern.handle_key(key),
-                _ if self.replacement.is_focused() => self.replacement.handle_key(key),
-                _ => {}
-            }
+        if let crossterm::event::Event::Key(key) = crossterm::event::read()?
+            && key.is_press()
+        {
+            self.handle_key(key);
         }
 
         Ok(())
     }
 
-    fn change_focus(&mut self) {
-        if self.pattern.is_focused() {
-            self.pattern.blur();
-            self.replacement.focus();
-        } else if self.replacement.is_focused() {
-            self.replacement.blur();
-            self.file_list.focus();
-        } else {
-            self.file_list.blur();
-            self.pattern.focus();
+    fn handle_key(&mut self, key: KeyEvent) {
+        match key.code {
+            KeyCode::Esc => self.exit = true,
+            KeyCode::Tab => self.focus = self.focus.next(),
+            _ => self.edit_focused_input(key),
         }
     }
+
+    // TODO: The tuple syntax is a bit meh
+    fn edit_focused_input(&mut self, key: KeyEvent) {
+        let (value, cursor) = match self.focus {
+            Focus::Pattern => (&mut self.pattern, &mut self.pattern_cursor),
+            Focus::Replacement => (&mut self.replacement, &mut self.replacement_cursor),
+            Focus::FileList => return,
+        };
+
+        match key.code {
+            KeyCode::Char(character) => {
+                value.insert(*cursor, character);
+                *cursor += character.len_utf8();
+            }
+            KeyCode::Backspace if *cursor > 0 => {
+                let previous = previous_char_boundary(value, *cursor);
+                value.replace_range(previous..*cursor, "");
+                *cursor = previous;
+            }
+            KeyCode::Delete if *cursor < value.len() => {
+                value.replace_range(*cursor..next_char_boundary(value, *cursor), "");
+            }
+            KeyCode::Left => *cursor = previous_char_boundary(value, *cursor),
+            KeyCode::Right => *cursor = next_char_boundary(value, *cursor),
+            KeyCode::Home => *cursor = 0,
+            KeyCode::End => *cursor = value.len(),
+            _ => {}
+        }
+    }
+}
+
+// TODO: Cursor text logic can probably be abstracted away into some encapsulation together with { .value, .cursor }
+fn previous_char_boundary(value: &str, cursor: usize) -> usize {
+    value[..cursor]
+        .char_indices()
+        .next_back()
+        .map(|(index, _)| index)
+        .unwrap_or(0)
+}
+
+fn next_char_boundary(value: &str, cursor: usize) -> usize {
+    if cursor >= value.len() {
+        return value.len();
+    }
+
+    value[cursor..]
+        .char_indices()
+        .nth(1)
+        .map(|(index, _)| cursor + index)
+        .unwrap_or(value.len())
 }
