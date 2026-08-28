@@ -37,7 +37,7 @@ impl Focus {
 }
 
 #[derive(Default, Clone, Copy, Debug, PartialEq, Eq)]
-enum MatchMode {
+pub enum MatchMode {
     #[default]
     Literal,
     Regex,

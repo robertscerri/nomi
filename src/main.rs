@@ -1,5 +1,6 @@
 mod app;
 mod cli;
+mod rename;
 mod selection;
 mod ui;
 
