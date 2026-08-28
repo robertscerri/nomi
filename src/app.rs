@@ -1,305 +1,288 @@
-use std::{path::PathBuf, time::Duration};
+use std::{fmt::Display, path::PathBuf};
 
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use ratatui::{Terminal, backend::Backend};
-
-use nomi::{
-    error::NomiError,
-    rename::{self, Entry, MatchMode, RenamePreview},
+use crossterm::event::{KeyCode, KeyEvent};
+use ratatui::{
+    DefaultTerminal, Frame,
+    layout::{Constraint, Layout, Rect},
+    style::{Color, Style},
+    text::{Line, Span},
 };
 
-use crate::ui;
+use nomi::{
+    core::read_entries,
+    error::{Error, Result},
+};
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Focus {
+use crate::{
+    pluralise,
+    rename::{Rename, RenameConfig},
+    selection::Selection,
+    ui::{
+        FileList, MODIFIER_KEY, Panel, StatusBar, TextBuffer, TextInput, display_path, inner_area,
+    },
+};
+
+#[derive(Default, Clone, Copy, Debug, Eq, PartialEq)]
+enum Focus {
+    #[default]
     Pattern,
     Replacement,
-    Files,
+    FileList,
 }
 
-#[derive(Default)]
-pub struct TextInput {
-    value: String,
-    cursor: usize,
-}
-
-impl TextInput {
-    pub fn value(&self) -> &str {
-        &self.value
-    }
-
-    pub fn cursor(&self) -> usize {
-        self.cursor
-    }
-
-    fn insert(&mut self, character: char) {
-        let byte_index = self.byte_index();
-        self.value.insert(byte_index, character);
-        self.cursor += 1;
-    }
-
-    fn backspace(&mut self) {
-        if self.cursor == 0 {
-            return;
-        }
-
-        self.cursor -= 1;
-        let byte_index = self.byte_index();
-        self.value.remove(byte_index);
-    }
-
-    fn delete(&mut self) {
-        if self.cursor < self.value.chars().count() {
-            let byte_index = self.byte_index();
-            self.value.remove(byte_index);
+impl Focus {
+    fn next(self) -> Self {
+        match self {
+            Focus::Pattern => Focus::Replacement,
+            Focus::Replacement => Focus::FileList,
+            Focus::FileList => Focus::Pattern,
         }
     }
 
-    fn move_left(&mut self) {
-        self.cursor = self.cursor.saturating_sub(1);
-    }
-
-    fn move_right(&mut self) {
-        self.cursor = (self.cursor + 1).min(self.value.chars().count());
-    }
-
-    fn move_to_start(&mut self) {
-        self.cursor = 0;
-    }
-
-    fn move_to_end(&mut self) {
-        self.cursor = self.value.chars().count();
-    }
-
-    fn clear(&mut self) {
-        self.value.clear();
-        self.cursor = 0;
-    }
-
-    fn byte_index(&self) -> usize {
-        self.value
-            .char_indices()
-            .nth(self.cursor)
-            .map_or(self.value.len(), |(index, _)| index)
+    fn previous(self) -> Self {
+        match self {
+            Focus::Pattern => Focus::FileList,
+            Focus::Replacement => Focus::Pattern,
+            Focus::FileList => Focus::Replacement,
+        }
     }
 }
 
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MatchMode {
+    #[default]
+    Literal,
+    Regex,
+}
+
+impl MatchMode {
+    pub fn toggle(self) -> Self {
+        match self {
+            MatchMode::Literal => MatchMode::Regex,
+            MatchMode::Regex => MatchMode::Literal,
+        }
+    }
+
+    pub fn colour(&self) -> Color {
+        match self {
+            MatchMode::Literal => Color::Blue,
+            MatchMode::Regex => Color::Magenta,
+        }
+    }
+}
+
+impl Display for MatchMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            MatchMode::Literal => "Literal",
+            MatchMode::Regex => "Regex",
+        })
+    }
+}
+
+#[derive(Debug)]
 pub struct App {
-    pub directory: PathBuf,
-    pub entries: Vec<Entry>,
-    pub pattern: TextInput,
-    pub replacement: TextInput,
-    pub mode: MatchMode,
-    pub focus: Focus,
-    pub cursor: usize,
-    pub confirm: bool,
-    pub message: Option<String>,
-    should_quit: bool,
+    directory: PathBuf,
+    entries: Selection<Rename>,
+    pattern: TextBuffer,
+    replacement: TextBuffer,
+    focus: Focus,
+    match_mode: MatchMode,
+    preview_error: Option<Error>,
+    confirming: bool,
+    exit: bool,
 }
 
 impl App {
-    pub fn new(directory: PathBuf) -> Result<Self, NomiError> {
+    pub fn try_new(directory: PathBuf) -> Result<Self> {
         let directory = directory.canonicalize()?;
-        let entries = rename::read_entries(&directory)?;
+        let entries = Selection::new(read_entries(&directory)?.into_iter().map(Rename::new));
 
         Ok(Self {
             directory,
             entries,
-            pattern: TextInput::default(),
-            replacement: TextInput::default(),
-            mode: MatchMode::Regex,
-            focus: Focus::Pattern,
-            cursor: 0,
-            confirm: false,
-            message: None,
-            should_quit: false,
+            pattern: TextBuffer::default(),
+            replacement: TextBuffer::default(),
+            focus: Focus::default(),
+            match_mode: MatchMode::default(),
+            preview_error: None,
+            confirming: false,
+            exit: false,
         })
     }
 
-    pub fn preview(&self) -> RenamePreview {
-        RenamePreview::build(
-            &self.directory,
-            &self.entries,
-            self.pattern.value(),
-            self.replacement.value(),
-            self.mode,
-        )
-    }
-
-    pub fn run<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> Result<(), NomiError> {
-        while !self.should_quit {
-            terminal.draw(|frame| ui::draw(frame, self))?;
-
-            if event::poll(Duration::from_millis(250))?
-                && let Event::Key(key) = event::read()?
-            {
-                self.handle_key(key)?;
-            }
+    pub fn run(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
+        while !self.exit {
+            terminal.draw(|frame| self.draw(frame))?;
+            self.handle_events()?;
         }
 
         Ok(())
     }
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<(), NomiError> {
-        if key.kind == KeyEventKind::Release {
-            return Ok(());
+    fn draw(&self, frame: &mut Frame) {
+        let [pattern_area, replacement_area, file_list_area, status_area] = Layout::vertical([
+            Constraint::Length(3),
+            Constraint::Length(3),
+            Constraint::Min(0),
+            Constraint::Length(1),
+        ])
+        .areas(frame.area());
+
+        frame.render_widget(
+            Panel::new(
+                TextInput::new(self.pattern.value(), self.pattern.cursor()),
+                " Pattern ",
+            )
+            .right_title(Line::from(vec![
+                Span::styled(" ● ", self.match_mode.colour()),
+                Span::styled(
+                    format!("{} ", self.match_mode),
+                    Style::default().fg(Color::Reset),
+                ),
+            ]))
+            .focused(self.focus == Focus::Pattern),
+            pattern_area,
+        );
+
+        frame.render_widget(
+            Panel::new(
+                TextInput::new(self.replacement.value(), self.replacement.cursor()),
+                " Replacement ",
+            )
+            .focused(self.focus == Focus::Replacement),
+            replacement_area,
+        );
+
+        frame.render_widget(
+            Panel::new(
+                FileList::new(&self.entries, self.preview_error.as_ref(), self.confirming),
+                format!(" {} ", display_path(self.directory.as_path())),
+            )
+            .right_title(format!(
+                " {} ",
+                pluralise!(self.entries.len(), "item", "items")
+            ))
+            .focused(self.focus == Focus::FileList),
+            file_list_area,
+        );
+
+        frame.render_widget(StatusBar::new(), status_area);
+
+        match self.focus {
+            Focus::Pattern => self.set_text_cursor(frame, pattern_area, &self.pattern),
+            Focus::Replacement => self.set_text_cursor(frame, replacement_area, &self.replacement),
+            Focus::FileList => {}
+        }
+    }
+
+    fn set_text_cursor(&self, frame: &mut Frame, area: Rect, buffer: &TextBuffer) {
+        let input = TextInput::new(buffer.value(), buffer.cursor());
+        frame.set_cursor_position(input.cursor_position(inner_area(area)));
+    }
+
+    fn handle_events(&mut self) -> Result<()> {
+        if let crossterm::event::Event::Key(key) = crossterm::event::read()?
+            && key.is_press()
+        {
+            self.handle_key(key);
         }
 
-        self.message = None;
+        Ok(())
+    }
 
-        if self.confirm {
-            return self.handle_confirmation(key);
+    fn handle_key(&mut self, key: KeyEvent) {
+        if self.confirming {
+            match key.code {
+                KeyCode::Enter => self.execute_renames(),
+                KeyCode::Esc => self.confirming = false,
+                _ => {}
+            }
+            return;
         }
 
-        if shortcut_modifier(key.modifiers) {
+        if key.modifiers.contains(MODIFIER_KEY) {
             match key.code {
                 KeyCode::Char('r') => {
-                    self.mode = match self.mode {
-                        MatchMode::Literal => MatchMode::Regex,
-                        MatchMode::Regex => MatchMode::Literal,
-                    };
-                    return Ok(());
+                    self.match_mode = self.match_mode.toggle();
+                    self.refresh_preview();
                 }
-                KeyCode::Char('a') => {
-                    let all_selected = self.entries.iter().all(|entry| entry.selected);
-                    for entry in &mut self.entries {
-                        entry.selected = !all_selected;
-                    }
-                    return Ok(());
+                _ => self.handle_focused_key(key),
+            }
+        } else {
+            match key.code {
+                KeyCode::Esc => self.exit = true,
+                KeyCode::Tab => self.focus = self.focus.next(),
+                KeyCode::BackTab => self.focus = self.focus.previous(),
+                KeyCode::Enter if self.preview_error.is_none() && self.has_renames() => {
+                    self.confirming = true
                 }
-                KeyCode::Char('c') => {
-                    self.should_quit = true;
-                    return Ok(());
-                }
-                _ => return Ok(()),
+                _ => self.handle_focused_key(key),
             }
         }
+    }
 
-        match key.code {
-            KeyCode::Tab => self.next_focus(),
-            KeyCode::BackTab => self.previous_focus(),
-            KeyCode::Esc => self.should_quit = true,
-            KeyCode::Enter => {
-                let preview = self.preview();
-                if let Some(error) = preview.error {
-                    self.message = Some(error);
-                } else if preview.is_empty() {
-                    self.message = Some("Nothing to rename".into());
-                } else {
-                    self.confirm = true;
+    fn handle_focused_key(&mut self, key: KeyEvent) {
+        match self.focus {
+            Focus::Pattern => {
+                self.pattern.handle_key(key);
+                if changes_text(key.code) {
+                    self.refresh_preview();
                 }
             }
-            _ if self.focus == Focus::Files => self.handle_file_key(key),
-            _ => self.handle_input_key(key),
-        }
-        Ok(())
-    }
-
-    fn handle_confirmation(&mut self, key: KeyEvent) -> Result<(), NomiError> {
-        match key.code {
-            KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
-                self.execute_preview()?;
+            Focus::Replacement => {
+                self.replacement.handle_key(key);
+                if changes_text(key.code) {
+                    self.refresh_preview();
+                }
             }
-            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
-                self.confirm = false;
+            Focus::FileList => FileList::handle_key(&mut self.entries, key),
+        }
+    }
+
+    fn refresh_preview(&mut self) {
+        match RenameConfig::new(
+            self.pattern.value(),
+            self.replacement.value(),
+            self.match_mode,
+        ) {
+            Ok(config) => {
+                for rename in self.entries.values_mut() {
+                    rename.preview(&config);
+                }
+                self.preview_error = None;
             }
-            _ => {}
+            Err(error) => self.preview_error = Some(error),
         }
-
-        Ok(())
     }
 
-    fn execute_preview(&mut self) -> Result<(), NomiError> {
-        let preview = self.preview();
-        let count = preview.len();
+    fn has_renames(&self) -> bool {
+        self.entries
+            .selected_values()
+            .any(|rename| rename.source() != rename.destination())
+    }
 
-        if let Err(error) = preview.execute(&self.directory) {
-            if matches!(error, NomiError::Rollback { .. }) {
-                return Err(error);
+    fn execute_renames(&mut self) {
+        let result = self
+            .entries
+            .selected_values()
+            .try_for_each(|rename| rename.execute(&self.directory));
+
+        match read_entries(&self.directory) {
+            Ok(entries) => {
+                self.entries = Selection::new(entries.into_iter().map(Rename::new));
+                self.refresh_preview();
+                if let Err(error) = result {
+                    self.preview_error = Some(error);
+                }
             }
-
-            self.confirm = false;
-            self.message = Some(error.to_string());
-            return Ok(());
+            Err(error) => self.preview_error = Some(error),
         }
 
-        self.entries = rename::read_entries(&self.directory)?;
-        self.clamp_cursor();
-        self.confirm = false;
-        self.message = Some(format!("Renamed {count} item(s)"));
-        self.pattern.clear();
-        self.replacement.clear();
-
-        Ok(())
-    }
-
-    fn handle_file_key(&mut self, key: KeyEvent) {
-        match key.code {
-            KeyCode::Up | KeyCode::Char('k') => self.select_previous(),
-            KeyCode::Down | KeyCode::Char('j') => self.select_next(),
-            KeyCode::Home => self.cursor = 0,
-            KeyCode::End => self.cursor = self.entries.len().saturating_sub(1),
-            KeyCode::Char(' ') => self.toggle_selected(),
-            KeyCode::Char('q') => self.should_quit = true,
-            _ => {}
-        }
-    }
-
-    fn select_previous(&mut self) {
-        self.cursor = self.cursor.saturating_sub(1);
-    }
-
-    fn select_next(&mut self) {
-        self.cursor = (self.cursor + 1).min(self.entries.len().saturating_sub(1));
-    }
-
-    fn toggle_selected(&mut self) {
-        if let Some(entry) = self.entries.get_mut(self.cursor) {
-            entry.selected = !entry.selected;
-        }
-    }
-
-    fn clamp_cursor(&mut self) {
-        self.cursor = self.cursor.min(self.entries.len().saturating_sub(1));
-    }
-
-    fn handle_input_key(&mut self, key: KeyEvent) {
-        let input = match self.focus {
-            Focus::Pattern => &mut self.pattern,
-            Focus::Replacement => &mut self.replacement,
-            Focus::Files => return,
-        };
-
-        match key.code {
-            KeyCode::Char(character) => input.insert(character),
-            KeyCode::Backspace => input.backspace(),
-            KeyCode::Delete => input.delete(),
-            KeyCode::Left => input.move_left(),
-            KeyCode::Right => input.move_right(),
-            KeyCode::Home => input.move_to_start(),
-            KeyCode::End => input.move_to_end(),
-            _ => {}
-        }
-    }
-
-    fn next_focus(&mut self) {
-        self.focus = match self.focus {
-            Focus::Pattern => Focus::Replacement,
-            Focus::Replacement => Focus::Files,
-            Focus::Files => Focus::Pattern,
-        };
-    }
-
-    fn previous_focus(&mut self) {
-        self.focus = match self.focus {
-            Focus::Pattern => Focus::Files,
-            Focus::Replacement => Focus::Pattern,
-            Focus::Files => Focus::Replacement,
-        };
+        self.confirming = false;
     }
 }
 
-fn shortcut_modifier(modifiers: KeyModifiers) -> bool {
-    modifiers.contains(KeyModifiers::CONTROL)
-        || (cfg!(target_os = "macos") && modifiers.contains(KeyModifiers::SUPER))
+fn changes_text(key: KeyCode) -> bool {
+    matches!(key, KeyCode::Char(_) | KeyCode::Backspace | KeyCode::Delete)
 }
