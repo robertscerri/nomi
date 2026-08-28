@@ -7,18 +7,19 @@ use ratatui::{
     widgets::{List, ListItem, ListState, StatefulWidget, Widget},
 };
 
-use crate::{selection::Selection, ui::MODIFIER_KEY};
+use crate::{rename::Rename, selection::Selection, ui::MODIFIER_KEY};
 
 pub struct FileList<'a> {
-    entries: &'a Selection<String>,
+    entries: &'a Selection<Rename>,
+    visible: bool,
 }
 
 impl<'a> FileList<'a> {
-    pub fn new(entries: &'a Selection<String>) -> Self {
-        Self { entries }
+    pub fn new(entries: &'a Selection<Rename>, visible: bool) -> Self {
+        Self { entries, visible }
     }
 
-    pub fn handle_key(entries: &mut Selection<String>, key: KeyEvent) {
+    pub fn handle_key(entries: &mut Selection<Rename>, key: KeyEvent) {
         match key.code {
             KeyCode::Up => entries.highlight_previous(),
             KeyCode::Down => entries.highlight_next(),
@@ -31,6 +32,10 @@ impl<'a> FileList<'a> {
 
 impl Widget for FileList<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
+        if !self.visible {
+            return;
+        }
+
         let highlighted = self.entries.highlighted();
 
         let items = self.entries.items().enumerate().map(|(index, entry)| {
@@ -41,17 +46,27 @@ impl Widget for FileList<'_> {
             };
 
             let (marker, marker_style) = if highlighted == Some(index) {
-                ("›", Style::default().fg(Color::Magenta))
+                ("› ", Style::default().fg(Color::Magenta))
             } else if entry.is_selected() {
-                ("●", Style::default().fg(Color::Green))
+                ("● ", Style::default().fg(Color::Green))
             } else {
-                ("○", Style::default().dim())
+                ("○ ", Style::default().dim())
             };
 
-            ListItem::new(Line::from(vec![
+            let mut line_items = vec![
                 Span::styled(marker, marker_style),
-                Span::styled(format!(" {}", entry.value()), item_style),
-            ]))
+                Span::styled(entry.value().source(), item_style),
+            ];
+
+            if entry.value().destination() != entry.value().source() {
+                line_items.push(Span::styled(" › ", Style::default().fg(Color::Magenta)));
+                line_items.push(Span::styled(
+                    entry.value().destination(),
+                    Style::default().fg(Color::Blue),
+                ));
+            }
+
+            ListItem::new(Line::from(line_items))
         });
 
         let list = List::new(items);

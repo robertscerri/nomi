@@ -5,30 +5,63 @@ use nomi::error::Result;
 use crate::app::MatchMode;
 
 #[derive(Debug)]
+enum Matcher {
+    Literal(String),
+    Regex(Regex),
+}
+
+#[derive(Debug)]
 pub struct RenameConfig {
-    pattern: String,
+    matcher: Matcher,
     replacement: String,
-    match_mode: MatchMode,
 }
 
 impl RenameConfig {
-    pub fn new(pattern: String, replacement: String, match_mode: MatchMode) -> Self {
-        RenameConfig {
-            pattern,
-            replacement,
-            match_mode,
+    pub fn new(pattern: &str, replacement: &str, match_mode: MatchMode) -> Result<Self> {
+        let matcher = match match_mode {
+            MatchMode::Literal => Matcher::Literal(pattern.to_owned()),
+            MatchMode::Regex => Matcher::Regex(Regex::new(pattern)?),
+        };
+
+        Ok(Self {
+            matcher,
+            replacement: replacement.to_owned(),
+        })
+    }
+
+    pub fn apply(&self, source: &str) -> String {
+        match &self.matcher {
+            Matcher::Literal(pattern) => source.replace(pattern, &self.replacement),
+            Matcher::Regex(regex) => regex
+                .replace_all(source, self.replacement.as_str())
+                .into_owned(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct Rename {
+    source: String,
+    destination: String,
+}
+
+impl Rename {
+    pub fn new(source: String) -> Self {
+        Self {
+            destination: source.clone(),
+            source,
         }
     }
 
-    pub fn apply(&self, target: String) -> Result<String> {
-        // TODO: Compile Regex for performance?
-        match self.match_mode {
-            MatchMode::Literal => Ok(target.replace(&self.pattern, &self.replacement)),
-            MatchMode::Regex => {
-                let re = Regex::new(&self.pattern)?;
-                let output = re.replace_all(&target, self.replacement.clone());
-                Ok(output.to_string())
-            }
-        }
+    pub fn source(&self) -> &str {
+        &self.source
+    }
+
+    pub fn destination(&self) -> &str {
+        &self.destination
+    }
+
+    pub fn preview(&mut self, config: &RenameConfig) {
+        self.destination = config.apply(&self.source);
     }
 }

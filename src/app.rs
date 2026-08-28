@@ -8,10 +8,14 @@ use ratatui::{
     text::{Line, Span},
 };
 
-use nomi::{core::read_entries, error::Result};
+use nomi::{
+    core::read_entries,
+    error::{Error, Result},
+};
 
 use crate::{
     pluralise,
+    rename::{Rename, RenameConfig},
     selection::Selection,
     ui::{
         FileList, MODIFIER_KEY, Panel, StatusBar, TextBuffer, TextInput, display_path, inner_area,
@@ -71,18 +75,19 @@ impl Display for MatchMode {
 #[derive(Debug)]
 pub struct App {
     directory: PathBuf,
-    entries: Selection<String>,
+    entries: Selection<Rename>,
     pattern: TextBuffer,
     replacement: TextBuffer,
     focus: Focus,
     match_mode: MatchMode,
+    preview_error: Option<Error>,
     exit: bool,
 }
 
 impl App {
     pub fn try_new(directory: PathBuf) -> Result<Self> {
         let directory = directory.canonicalize()?;
-        let entries = Selection::new(read_entries(&directory)?);
+        let entries = Selection::new(read_entries(&directory)?.into_iter().map(Rename::new));
 
         Ok(Self {
             directory,
@@ -91,6 +96,7 @@ impl App {
             replacement: TextBuffer::default(),
             focus: Focus::default(),
             match_mode: MatchMode::default(),
+            preview_error: None,
             exit: false,
         })
     }
@@ -140,7 +146,7 @@ impl App {
 
         frame.render_widget(
             Panel::new(
-                FileList::new(&self.entries),
+                FileList::new(&self.entries, self.preview_error.is_none()),
                 format!(" {} ", display_path(self.directory.as_path())),
             )
             .right_title(format!(
@@ -178,7 +184,10 @@ impl App {
     fn handle_key(&mut self, key: KeyEvent) {
         if key.modifiers.contains(MODIFIER_KEY) {
             match key.code {
-                KeyCode::Char('r') => self.match_mode = self.match_mode.toggle(),
+                KeyCode::Char('r') => {
+                    self.match_mode = self.match_mode.toggle();
+                    self.refresh_preview();
+                }
                 _ => self.handle_focused_key(key),
             }
         } else {
@@ -192,9 +201,39 @@ impl App {
 
     fn handle_focused_key(&mut self, key: KeyEvent) {
         match self.focus {
-            Focus::Pattern => self.pattern.handle_key(key),
-            Focus::Replacement => self.replacement.handle_key(key),
+            Focus::Pattern => {
+                self.pattern.handle_key(key);
+                if changes_text(key.code) {
+                    self.refresh_preview();
+                }
+            }
+            Focus::Replacement => {
+                self.replacement.handle_key(key);
+                if changes_text(key.code) {
+                    self.refresh_preview();
+                }
+            }
             Focus::FileList => FileList::handle_key(&mut self.entries, key),
         }
     }
+
+    fn refresh_preview(&mut self) {
+        match RenameConfig::new(
+            self.pattern.value(),
+            self.replacement.value(),
+            self.match_mode,
+        ) {
+            Ok(config) => {
+                for rename in self.entries.values_mut() {
+                    rename.preview(&config);
+                }
+                self.preview_error = None;
+            }
+            Err(error) => self.preview_error = Some(error),
+        }
+    }
+}
+
+fn changes_text(key: KeyCode) -> bool {
+    matches!(key, KeyCode::Char(_) | KeyCode::Backspace | KeyCode::Delete)
 }
