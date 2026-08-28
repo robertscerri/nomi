@@ -3,15 +3,14 @@ use std::path::PathBuf;
 use crossterm::event::KeyCode;
 use ratatui::{
     DefaultTerminal, Frame,
-    layout::{Alignment, Constraint, Layout},
-    text::Line,
-    widgets::{Block, List},
+    layout::{Constraint, Layout},
+    widgets::List,
 };
 
 use nomi::{
     core::read_entries,
     error::Result,
-    ui::{StatusBar, TextInput},
+    ui::{BlockBuilder, StatusBar, TextInput},
 };
 
 #[derive(Debug)]
@@ -36,9 +35,10 @@ impl<'a> App<'a> {
 
         let replacement = TextInput::new(" Replacement ");
         let file_list = List::new(entries).block(
-            Block::bordered()
+            BlockBuilder::new()
                 .title(format!(" {} ", directory.display()))
-                .title(Line::from(" 5 Items ").alignment(Alignment::Right)),
+                .right_title(" 5 Items ")
+                .build(),
         );
         let status_bar = StatusBar::new();
 

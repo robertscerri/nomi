@@ -6,7 +6,7 @@ use ratatui::{
     widgets::{Block, Paragraph, Widget},
 };
 
-use crate::ui::focus_style;
+use crate::ui::BlockBuilder;
 
 #[derive(Debug)]
 pub struct TextInput {
@@ -110,9 +110,11 @@ impl TextInput {
 
 impl Widget for &TextInput {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let style = focus_style(self.focused);
+        let block = BlockBuilder::new()
+            .title(self.title)
+            .focused(self.focused)
+            .build();
 
-        let block = Block::bordered().title(self.title).border_style(style);
         let (_, _, scroll) = self.viewport(area);
 
         Paragraph::new(self.value.as_str())
