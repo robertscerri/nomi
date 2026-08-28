@@ -9,7 +9,7 @@ use ratatui::{
 
 use nomi::{core::read_entries, error::Result};
 
-use crate::ui::{Panel, StatusBar, TextBuffer, TextInput, inner_area};
+use crate::ui::{Panel, StatusBar, TextBuffer, TextInput, display_path, inner_area};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Focus {
@@ -92,7 +92,7 @@ impl App {
         frame.render_widget(
             Panel::new(
                 List::new(self.entries.iter().map(String::as_str)),
-                format!(" {} ", self.directory.display()),
+                format!(" {} ", display_path(self.directory.as_path())),
             )
             .right_title(format!(" {} items ", self.entries.len()))
             .focused(self.focus == Focus::FileList),
