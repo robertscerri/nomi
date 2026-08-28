@@ -44,3 +44,8 @@ through unique temporary names, allowing swaps and cycles. If an operation fails
 
 The initial release operates on the immediate children of one directory and does
 not recurse.
+
+## Development
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for a concise overview of the modules,
+application flow, and rename safety model.
