@@ -10,7 +10,7 @@ use ratatui::{
 use nomi::{
     core::read_entries,
     error::Result,
-    ui::{BlockBuilder, StatusBar, TextInput},
+    ui::{BlockBuilder, FocusTarget, StatusBar, TextInput},
 };
 
 #[derive(Debug)]

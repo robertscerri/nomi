@@ -6,7 +6,7 @@ use ratatui::{
     widgets::{Block, Paragraph, Widget},
 };
 
-use crate::ui::BlockBuilder;
+use crate::ui::{BlockBuilder, FocusTarget};
 
 #[derive(Debug)]
 pub struct TextInput {
@@ -24,18 +24,6 @@ impl TextInput {
             cursor: 0,
             focused: false,
         }
-    }
-
-    pub fn focus(&mut self) {
-        self.focused = true;
-    }
-
-    pub fn blur(&mut self) {
-        self.focused = false;
-    }
-
-    pub fn is_focused(&self) -> bool {
-        self.focused
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) {
@@ -112,7 +100,7 @@ impl Widget for &TextInput {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let block = BlockBuilder::new()
             .title(self.title)
-            .focused(self.focused)
+            .focused(self.is_focused())
             .build();
 
         let (_, _, scroll) = self.viewport(area);
@@ -121,5 +109,19 @@ impl Widget for &TextInput {
             .block(block)
             .scroll((0, scroll as u16))
             .render(area, buf);
+    }
+}
+
+impl FocusTarget for TextInput {
+    fn focus(&mut self) {
+        self.focused = true;
+    }
+
+    fn blur(&mut self) {
+        self.focused = false;
+    }
+
+    fn is_focused(&self) -> bool {
+        self.focused
     }
 }
