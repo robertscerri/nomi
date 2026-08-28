@@ -2,6 +2,7 @@ use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
+    style::{Color, Style},
     text::Line,
     widgets::{Block, Paragraph, Widget},
 };
@@ -11,6 +12,7 @@ pub struct TextInput {
     title: &'static str,
     value: String,
     cursor: usize,
+    focused: bool,
 }
 
 impl TextInput {
@@ -19,7 +21,20 @@ impl TextInput {
             title,
             value: String::new(),
             cursor: 0,
+            focused: false,
         }
+    }
+
+    pub fn focus(&mut self) {
+        self.focused = true;
+    }
+
+    pub fn blur(&mut self) {
+        self.focused = false;
+    }
+
+    pub fn is_focused(&self) -> bool {
+        self.focused
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) {
@@ -94,7 +109,13 @@ impl TextInput {
 
 impl Widget for &TextInput {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let block = Block::bordered().title(self.title);
+        let style = if self.focused {
+            Style::default().fg(Color::Cyan)
+        } else {
+            Style::default().dim()
+        };
+
+        let block = Block::bordered().title(self.title).border_style(style);
         let (_, _, scroll) = self.viewport(area);
 
         Paragraph::new(self.value.as_str())

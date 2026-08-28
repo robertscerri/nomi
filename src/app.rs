@@ -9,14 +9,6 @@ use ratatui::{
 
 use nomi::{error::Result, ui::TextInput};
 
-#[derive(Debug, Default)]
-pub enum FocusedField {
-    #[default]
-    Pattern,
-    Replacement,
-    FileList,
-}
-
 #[derive(Debug)]
 pub struct App {
     directory: PathBuf,
@@ -24,7 +16,6 @@ pub struct App {
     pattern: TextInput,
     replacement: TextInput,
 
-    focused: FocusedField,
     exit: bool,
 }
 
@@ -32,11 +23,15 @@ impl App {
     pub fn try_new(directory: PathBuf) -> Result<Self> {
         let directory = directory.canonicalize()?;
 
+        let mut pattern = TextInput::new(" Pattern ");
+        let replacement = TextInput::new(" Replacement ");
+
+        pattern.focus();
+
         Ok(App {
             directory,
-            pattern: TextInput::new(" Pattern "),
-            replacement: TextInput::new(" Replacement "),
-            focused: FocusedField::Pattern,
+            pattern,
+            replacement,
             exit: false,
         })
     }
@@ -68,14 +63,10 @@ impl App {
         );
         frame.render_widget(Block::new(), status_area);
 
-        match self.focused {
-            FocusedField::Pattern => {
-                frame.set_cursor_position(self.pattern.cursor_position(pattern_area));
-            }
-            FocusedField::Replacement => {
-                frame.set_cursor_position(self.replacement.cursor_position(replacement_area));
-            }
-            FocusedField::FileList => {}
+        if self.pattern.is_focused() {
+            frame.set_cursor_position(self.pattern.cursor_position(pattern_area));
+        } else if self.replacement.is_focused() {
+            frame.set_cursor_position(self.replacement.cursor_position(replacement_area));
         }
     }
 
@@ -87,26 +78,28 @@ impl App {
             }
 
             match key.code {
-                KeyCode::Esc => {
-                    self.exit = true;
-                }
+                KeyCode::Esc => self.exit = true,
+                KeyCode::Tab => self.change_focus(),
 
-                KeyCode::Tab => {
-                    self.focused = match self.focused {
-                        FocusedField::Pattern => FocusedField::Replacement,
-                        FocusedField::Replacement => FocusedField::FileList,
-                        FocusedField::FileList => FocusedField::Pattern,
-                    }
-                }
-
-                _ => match self.focused {
-                    FocusedField::Pattern => self.pattern.handle_key(key),
-                    FocusedField::Replacement => self.replacement.handle_key(key),
-                    FocusedField::FileList => {}
-                },
+                _ if self.pattern.is_focused() => self.pattern.handle_key(key),
+                _ if self.replacement.is_focused() => self.replacement.handle_key(key),
+                _ => {}
             }
         }
 
         Ok(())
+    }
+
+    fn change_focus(&mut self) {
+        if self.pattern.is_focused() {
+            self.pattern.blur();
+            self.replacement.focus();
+        } else if self.replacement.is_focused() {
+            self.replacement.blur();
+            //TODO self.file_list.focus();
+        } else {
+            //TODO self.file_list.blur();
+            self.pattern.focus();
+        }
     }
 }
