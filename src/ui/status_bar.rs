@@ -35,8 +35,22 @@ impl StatusBar {
 
 impl Widget for StatusBar {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let [status_area, controls_area] =
-            Layout::vertical([Constraint::Length(1), Constraint::Length(1)]).areas(area);
+        let branding = Line::from(vec![
+            Span::styled(
+                format!("{} ", env!("CARGO_PKG_NAME")),
+                Style::default().fg(Color::DarkGray),
+            ),
+            Span::styled(
+                format!("v{}", env!("CARGO_PKG_VERSION")),
+                Style::default().fg(Color::Blue),
+            ),
+        ]);
+
+        let branding_width = branding.width() as u16;
+
+        let [controls_area, branding_area] =
+            Layout::horizontal([Constraint::Min(0), Constraint::Length(branding_width)])
+                .areas(area);
 
         let controls = Line::from(vec![
             key!("Tab"),
@@ -55,7 +69,9 @@ impl Widget for StatusBar {
             label!("quit"),
         ]);
 
-        Paragraph::new(Line::from(vec![])).render(status_area, buf);
         Paragraph::new(controls).render(controls_area, buf);
+        Paragraph::new(branding)
+            .right_aligned()
+            .render(branding_area, buf);
     }
 }

@@ -67,68 +67,6 @@ fn file_row<'a>(
     ListItem::new(content)
 }
 
-struct StatusBar<'a> {
-    message: Option<&'a str>,
-    error: Option<&'a str>,
-    change_count: usize,
-}
-
-impl<'a> StatusBar<'a> {
-    fn new(app: &'a App, preview: &'a RenamePreview) -> Self {
-        Self {
-            message: app.message.as_deref(),
-            error: preview.error.as_deref(),
-            change_count: preview.len(),
-        }
-    }
-}
-
-impl Widget for StatusBar<'_> {
-    fn render(self, area: Rect, buffer: &mut Buffer) {
-        let status = match (self.message, self.error) {
-            (Some(message), _) => Line::from(vec![
-                Span::styled("● ", Style::default().fg(Color::Blue)),
-                Span::raw(message),
-            ]),
-            (None, Some(error)) => Line::from(vec![
-                Span::styled("! ", Style::default().fg(Color::Red)),
-                Span::styled(error, Style::default().fg(Color::Red)),
-            ]),
-            (None, None) => Line::from(vec![
-                Span::styled("● ", Style::default().fg(Color::Green)),
-                Span::raw("Ready"),
-                Span::styled(" — ", Style::default().fg(Color::DarkGray)),
-                Span::styled(
-                    format!("{} pending change(s)", self.change_count),
-                    Style::default().fg(if self.change_count == 0 {
-                        Color::DarkGray
-                    } else {
-                        Color::Green
-                    }),
-                ),
-            ]),
-        };
-
-        let [status_area, controls_area] =
-            Layout::vertical([Constraint::Length(1), Constraint::Length(1)]).areas(area);
-        let identity = Line::from(vec![
-            Span::styled("nomi ", Style::default().fg(Color::DarkGray)),
-            Span::styled(
-                concat!("v", env!("CARGO_PKG_VERSION")),
-                Style::default().fg(Color::Blue),
-            ),
-        ]);
-
-        let identity_fits = status.width() + identity.width() + 2 <= status_area.width as usize;
-        Paragraph::new(status).render(status_area, buffer);
-        if identity_fits {
-            Paragraph::new(identity)
-                .alignment(Alignment::Right)
-                .render(status_area, buffer);
-        }
-    }
-}
-
 fn draw_confirmation(frame: &mut Frame, area: Rect, count: usize) {
     let popup = centered_rect(52, 7, area);
     let content = vec![
