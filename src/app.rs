@@ -4,28 +4,25 @@ use crossterm::event::KeyCode;
 use ratatui::{
     DefaultTerminal, Frame,
     layout::{Constraint, Layout},
-    widgets::List,
 };
 
 use nomi::{
     core::read_entries,
     error::Result,
-    ui::{BlockBuilder, FocusTarget, StatusBar, TextInput},
+    ui::{FileList, FocusTarget, Interactive, StatusBar, TextInput},
 };
 
 #[derive(Debug)]
-pub struct App<'a> {
-    directory: PathBuf,
-
+pub struct App {
     pattern: TextInput,
     replacement: TextInput,
-    file_list: List<'a>,
+    file_list: FileList,
     status_bar: StatusBar,
 
     exit: bool,
 }
 
-impl<'a> App<'a> {
+impl App {
     pub fn try_new(directory: PathBuf) -> Result<Self> {
         let directory = directory.canonicalize()?;
         let entries = read_entries(&directory)?;
@@ -34,16 +31,10 @@ impl<'a> App<'a> {
         pattern.focus();
 
         let replacement = TextInput::new(" Replacement ");
-        let file_list = List::new(entries).block(
-            BlockBuilder::new()
-                .title(format!(" {} ", directory.display()))
-                .right_title(" 5 Items ")
-                .build(),
-        );
+        let file_list = FileList::new(directory, entries);
         let status_bar = StatusBar::new();
 
         Ok(App {
-            directory,
             pattern,
             replacement,
             file_list,
@@ -108,9 +99,9 @@ impl<'a> App<'a> {
             self.replacement.focus();
         } else if self.replacement.is_focused() {
             self.replacement.blur();
-            //TODO self.file_list.focus();
+            self.file_list.focus();
         } else {
-            //TODO self.file_list.blur();
+            self.file_list.blur();
             self.pattern.focus();
         }
     }

@@ -42,7 +42,7 @@ impl<'a> BlockBuilder<'a> {
             Style::default().dim()
         };
 
-        self.block = self.block.style(style);
+        self.block = self.block.border_style(style);
         self
     }
 
