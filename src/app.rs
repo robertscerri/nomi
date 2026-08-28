@@ -9,7 +9,7 @@ use ratatui::{
 
 use nomi::{core::read_entries, error::Result};
 
-use crate::ui::{Panel, StatusBar, TextInput, inner_area};
+use crate::ui::{Panel, StatusBar, TextBuffer, TextInput, inner_area};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Focus {
@@ -32,10 +32,8 @@ impl Focus {
 pub struct App {
     directory: PathBuf,
     entries: Vec<String>,
-    pattern: String,
-    pattern_cursor: usize,
-    replacement: String,
-    replacement_cursor: usize,
+    pattern: TextBuffer,
+    replacement: TextBuffer,
     focus: Focus,
     exit: bool,
 }
@@ -48,10 +46,8 @@ impl App {
         Ok(Self {
             directory,
             entries,
-            pattern: String::new(),
-            pattern_cursor: 0,
-            replacement: String::new(),
-            replacement_cursor: 0,
+            pattern: TextBuffer::default(),
+            replacement: TextBuffer::default(),
             focus: Focus::Pattern,
             exit: false,
         })
@@ -77,7 +73,7 @@ impl App {
 
         frame.render_widget(
             Panel::new(
-                TextInput::new(&self.pattern, self.pattern_cursor),
+                TextInput::new(self.pattern.value(), self.pattern.cursor()),
                 " Pattern ",
             )
             .focused(self.focus == Focus::Pattern),
@@ -86,7 +82,7 @@ impl App {
 
         frame.render_widget(
             Panel::new(
-                TextInput::new(&self.replacement, self.replacement_cursor),
+                TextInput::new(self.replacement.value(), self.replacement.cursor()),
                 " Replacement ",
             )
             .focused(self.focus == Focus::Replacement),
@@ -106,21 +102,14 @@ impl App {
         frame.render_widget(StatusBar::new(), status_area);
 
         match self.focus {
-            Focus::Pattern => {
-                self.set_text_cursor(frame, pattern_area, &self.pattern, self.pattern_cursor)
-            }
-            Focus::Replacement => self.set_text_cursor(
-                frame,
-                replacement_area,
-                &self.replacement,
-                self.replacement_cursor,
-            ),
+            Focus::Pattern => self.set_text_cursor(frame, pattern_area, &self.pattern),
+            Focus::Replacement => self.set_text_cursor(frame, replacement_area, &self.replacement),
             Focus::FileList => {}
         }
     }
 
-    fn set_text_cursor(&self, frame: &mut Frame, area: Rect, value: &str, cursor: usize) {
-        let input = TextInput::new(value, cursor);
+    fn set_text_cursor(&self, frame: &mut Frame, area: Rect, buffer: &TextBuffer) {
+        let input = TextInput::new(buffer.value(), buffer.cursor());
         frame.set_cursor_position(input.cursor_position(inner_area(area)));
     }
 
@@ -138,57 +127,11 @@ impl App {
         match key.code {
             KeyCode::Esc => self.exit = true,
             KeyCode::Tab => self.focus = self.focus.next(),
-            _ => self.edit_focused_input(key),
+            _ => match self.focus {
+                Focus::Pattern => self.pattern.handle_key(key.code),
+                Focus::Replacement => self.replacement.handle_key(key.code),
+                Focus::FileList => {}
+            },
         }
     }
-
-    // TODO: The tuple syntax is a bit meh
-    fn edit_focused_input(&mut self, key: KeyEvent) {
-        let (value, cursor) = match self.focus {
-            Focus::Pattern => (&mut self.pattern, &mut self.pattern_cursor),
-            Focus::Replacement => (&mut self.replacement, &mut self.replacement_cursor),
-            Focus::FileList => return,
-        };
-
-        match key.code {
-            KeyCode::Char(character) => {
-                value.insert(*cursor, character);
-                *cursor += character.len_utf8();
-            }
-            KeyCode::Backspace if *cursor > 0 => {
-                let previous = previous_char_boundary(value, *cursor);
-                value.replace_range(previous..*cursor, "");
-                *cursor = previous;
-            }
-            KeyCode::Delete if *cursor < value.len() => {
-                value.replace_range(*cursor..next_char_boundary(value, *cursor), "");
-            }
-            KeyCode::Left => *cursor = previous_char_boundary(value, *cursor),
-            KeyCode::Right => *cursor = next_char_boundary(value, *cursor),
-            KeyCode::Home => *cursor = 0,
-            KeyCode::End => *cursor = value.len(),
-            _ => {}
-        }
-    }
-}
-
-// TODO: Cursor text logic can probably be abstracted away into some encapsulation together with { .value, .cursor }
-fn previous_char_boundary(value: &str, cursor: usize) -> usize {
-    value[..cursor]
-        .char_indices()
-        .next_back()
-        .map(|(index, _)| index)
-        .unwrap_or(0)
-}
-
-fn next_char_boundary(value: &str, cursor: usize) -> usize {
-    if cursor >= value.len() {
-        return value.len();
-    }
-
-    value[cursor..]
-        .char_indices()
-        .nth(1)
-        .map(|(index, _)| cursor + index)
-        .unwrap_or(value.len())
 }
