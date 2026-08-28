@@ -28,44 +28,6 @@ pub fn draw(frame: &mut Frame, app: &App) {
     }
 }
 
-fn main_layout(area: Rect) -> [Rect; 4] {
-    Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(INPUT_HEIGHT),
-            Constraint::Length(INPUT_HEIGHT),
-            Constraint::Min(5),
-            Constraint::Length(STATUS_HEIGHT),
-        ])
-        .areas(area)
-}
-
-fn draw_inputs(frame: &mut Frame, app: &App, pattern_area: Rect, replacement_area: Rect) {
-    let pattern = InputField::new(
-        Line::raw(" Pattern "),
-        Some(mode_title(app.mode)),
-        app.pattern.value(),
-        app.pattern.cursor(),
-        app.focus == Focus::Pattern,
-    );
-    let replacement = InputField::new(
-        Line::raw(" Replacement "),
-        None,
-        app.replacement.value(),
-        app.replacement.cursor(),
-        app.focus == Focus::Replacement,
-    );
-
-    frame.render_widget(&pattern, pattern_area);
-    frame.render_widget(&replacement, replacement_area);
-
-    if pattern.focused {
-        frame.set_cursor_position(pattern.cursor_position(pattern_area));
-    } else if replacement.focused {
-        frame.set_cursor_position(replacement.cursor_position(replacement_area));
-    }
-}
-
 fn draw_files(frame: &mut Frame, app: &App, preview: &RenamePreview, area: Rect) {
     let visible_rows = area.height.saturating_sub(2) as usize;
     let scroll = app.cursor.saturating_add(1).saturating_sub(visible_rows);
@@ -142,58 +104,6 @@ fn file_row<'a>(
     };
 
     ListItem::new(content)
-}
-
-struct InputField<'a> {
-    title: Line<'static>,
-    right_title: Option<Line<'static>>,
-    value: &'a str,
-    cursor: usize,
-    focused: bool,
-}
-
-impl<'a> InputField<'a> {
-    fn new(
-        title: Line<'static>,
-        right_title: Option<Line<'static>>,
-        value: &'a str,
-        cursor: usize,
-        focused: bool,
-    ) -> Self {
-        Self {
-            title,
-            right_title,
-            value,
-            cursor,
-            focused,
-        }
-    }
-
-    fn cursor_position(&self, area: Rect) -> (u16, u16) {
-        let cursor_x = area.x + 1 + self.cursor.saturating_sub(self.horizontal_scroll(area)) as u16;
-        (cursor_x, area.y + 1)
-    }
-
-    fn horizontal_scroll(&self, area: Rect) -> usize {
-        let visible_width = area.width.saturating_sub(2) as usize;
-        self.cursor.saturating_sub(visible_width.saturating_sub(1))
-    }
-}
-
-impl Widget for &InputField<'_> {
-    fn render(self, area: Rect, buffer: &mut Buffer) {
-        let mut block = Block::default()
-            .borders(Borders::ALL)
-            .title_top(self.title.clone().style(focus_style(self.focused)))
-            .border_style(focus_style(self.focused));
-        if let Some(right_title) = &self.right_title {
-            block = block.title_top(right_title.clone().right_aligned());
-        }
-        Paragraph::new(self.value)
-            .block(block)
-            .scroll((0, self.horizontal_scroll(area) as u16))
-            .render(area, buffer);
-    }
 }
 
 fn mode_title(mode: MatchMode) -> Line<'static> {
@@ -290,18 +200,6 @@ impl Widget for StatusBar<'_> {
     }
 }
 
-fn keycap(key: &'static str) -> Span<'static> {
-    Span::styled(key, Style::default().fg(Color::Yellow))
-}
-
-fn label(label: &'static str) -> Span<'static> {
-    Span::styled(label, Style::default().fg(Color::DarkGray))
-}
-
-fn separator() -> Span<'static> {
-    Span::styled("  │  ", Style::default().fg(Color::DarkGray))
-}
-
 fn draw_confirmation(frame: &mut Frame, area: Rect, count: usize) {
     let popup = centered_rect(52, 7, area);
     let content = vec![
@@ -322,14 +220,6 @@ fn draw_confirmation(frame: &mut Frame, area: Rect, count: usize) {
             .block(block),
         popup,
     );
-}
-
-fn focus_style(focused: bool) -> Style {
-    if focused {
-        Style::default().fg(Color::Cyan)
-    } else {
-        Style::default().fg(Color::DarkGray)
-    }
 }
 
 fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {

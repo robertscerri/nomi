@@ -2,10 +2,11 @@ use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    style::{Color, Style},
     text::Line,
     widgets::{Block, Paragraph, Widget},
 };
+
+use crate::ui::focus_style;
 
 #[derive(Debug)]
 pub struct TextInput {
@@ -109,11 +110,7 @@ impl TextInput {
 
 impl Widget for &TextInput {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let style = if self.focused {
-            Style::default().fg(Color::Cyan)
-        } else {
-            Style::default().dim()
-        };
+        let style = focus_style(self.focused);
 
         let block = Block::bordered().title(self.title).border_style(style);
         let (_, _, scroll) = self.viewport(area);
