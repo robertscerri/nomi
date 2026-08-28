@@ -1,19 +1,33 @@
 use std::path::PathBuf;
 
-use nomi::error::Result;
+use crossterm::event::KeyCode;
+use nomi::{
+    error::Result,
+    widgets::{InputState, TextInput},
+};
 use ratatui::{
     DefaultTerminal, Frame,
     buffer::Buffer,
-    layout::Rect,
-    style::Stylize,
-    symbols::border,
-    text::{Line, Text},
-    widgets::{Block, Paragraph, Widget},
+    layout::{Constraint, Layout, Rect},
+    widgets::{Block, StatefulWidget, Widget},
 };
+
+#[derive(Debug, Default)]
+pub enum FocusedField {
+    #[default]
+    Pattern,
+    Replacement,
+}
 
 #[derive(Debug, Default)]
 pub struct App {
     directory: PathBuf,
+
+    pattern: InputState,
+    replacement: InputState,
+
+    focused: FocusedField,
+
     exit: bool,
 }
 
@@ -23,6 +37,9 @@ impl App {
 
         Ok(App {
             directory,
+            pattern: InputState::default(),
+            replacement: InputState::default(),
+            focused: FocusedField::Pattern,
             exit: false,
         })
     }
@@ -36,40 +53,52 @@ impl App {
         Ok(())
     }
 
-    fn draw(&self, frame: &mut Frame) {
+    fn draw(&mut self, frame: &mut Frame) {
         frame.render_widget(self, frame.area());
     }
 
     fn handle_events(&mut self) -> Result<()> {
-        // TODO
+        if let crossterm::event::Event::Key(key) = crossterm::event::read()? {
+            match key.code {
+                KeyCode::Esc => {
+                    self.exit = true;
+                }
+
+                KeyCode::Tab => {
+                    self.focused = match self.focused {
+                        FocusedField::Pattern => FocusedField::Replacement,
+                        FocusedField::Replacement => FocusedField::Pattern,
+                    }
+                }
+
+                _ => match self.focused {
+                    FocusedField::Pattern => self.pattern.handle_key(key),
+                    FocusedField::Replacement => self.replacement.handle_key(key),
+                },
+            }
+        }
+
         Ok(())
     }
 }
 
-impl Widget for &App {
+impl Widget for &mut App {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let title = Line::from(" Counter App Tutorial ".bold());
-        let instructions = Line::from(vec![
-            " Decrement ".into(),
-            "<Left>".blue().bold(),
-            " Increment ".into(),
-            "<Right>".blue().bold(),
-            " Quit ".into(),
-            "<Q> ".blue().bold(),
-        ]);
-        let block = Block::bordered()
-            .title(title.centered())
-            .title_bottom(instructions.centered())
-            .border_set(border::THICK);
+        let [pattern_area, replacement_area, file_list_area, status_area] = Layout::vertical([
+            Constraint::Length(3),
+            Constraint::Length(3),
+            Constraint::Min(0),
+            Constraint::Length(2),
+        ])
+        .areas(area);
 
-        let counter_text = Text::from(vec![Line::from(vec![
-            "Value: ".into(),
-            self.directory.to_string_lossy().yellow(),
-        ])]);
+        TextInput::new(" Pattern ").render(pattern_area, buf, &mut self.pattern);
+        TextInput::new(" Replacement ").render(replacement_area, buf, &mut self.replacement);
 
-        Paragraph::new(counter_text)
-            .centered()
-            .block(block)
-            .render(area, buf);
+        Block::new()
+            .title(" Files ")
+            .borders(ratatui::widgets::Borders::ALL)
+            .render(file_list_area, buf);
+        Block::new().render(status_area, buf);
     }
 }
