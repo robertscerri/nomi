@@ -34,7 +34,12 @@ impl<'a, W> Panel<'a, W> {
     where
         T: Into<Line<'a>>,
     {
-        self.right_title = Some(title.into().alignment(Alignment::Right));
+        self.right_title = Some(
+            title
+                .into()
+                .alignment(Alignment::Right)
+                .style(Style::default().fg(Color::Reset)),
+        );
         self
     }
 
