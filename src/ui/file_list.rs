@@ -2,7 +2,7 @@ use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Color, Style},
     text::{Line, Span},
     widgets::{List, ListItem, ListState, StatefulWidget, Widget},
 };
@@ -31,23 +31,30 @@ impl<'a> FileList<'a> {
 
 impl Widget for FileList<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let items = self.entries.items().map(|entry| {
-            let marker = if entry.is_selected() { "[x]" } else { "[ ]" };
-            let marker_style = if entry.is_selected() {
-                Style::default().fg(Color::Green)
+        let highlighted = self.entries.highlighted();
+
+        let items = self.entries.items().enumerate().map(|(index, entry)| {
+            let item_style = if entry.is_selected() {
+                Style::default()
             } else {
                 Style::default().dim()
             };
 
+            let (marker, marker_style) = if highlighted == Some(index) {
+                ("›", Style::default().fg(Color::Magenta))
+            } else if entry.is_selected() {
+                ("●", Style::default().fg(Color::Green))
+            } else {
+                ("○", Style::default().dim())
+            };
+
             ListItem::new(Line::from(vec![
                 Span::styled(marker, marker_style),
-                Span::raw(format!(" {}", entry.value())),
+                Span::styled(format!(" {}", entry.value()), item_style),
             ]))
         });
 
-        let list = List::new(items)
-            .highlight_symbol("› ")
-            .highlight_style(Style::default().add_modifier(Modifier::BOLD));
+        let list = List::new(items);
 
         let mut state = ListState::default().with_selected(self.entries.highlighted());
 
