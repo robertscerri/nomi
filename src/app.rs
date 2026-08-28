@@ -1,7 +1,5 @@
 use std::{fmt::Display, path::PathBuf};
 
-#[cfg(target_os = "macos")]
-use crossterm::event::KeyModifiers;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
     DefaultTerminal, Frame,
