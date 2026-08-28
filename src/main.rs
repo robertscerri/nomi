@@ -1,5 +1,6 @@
 mod app;
 mod cli;
+mod selection;
 mod ui;
 
 use std::process::ExitCode;

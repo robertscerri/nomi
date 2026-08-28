@@ -1,14 +1,22 @@
+mod file_list;
 mod panel;
-mod stateful;
 mod status_bar;
 mod text_buffer;
 mod text_input;
 
+pub use file_list::FileList;
 pub use panel::{Panel, inner_area};
-pub use stateful::Stateful;
 pub use status_bar::StatusBar;
 pub use text_buffer::TextBuffer;
 pub use text_input::TextInput;
+
+use crossterm::event::KeyModifiers;
+
+#[cfg(target_os = "macos")]
+pub const MODIFIER_KEY: KeyModifiers = KeyModifiers::SUPER;
+
+#[cfg(not(target_os = "macos"))]
+pub const MODIFIER_KEY: KeyModifiers = KeyModifiers::CONTROL;
 
 pub fn display_path(path: &std::path::Path) -> String {
     let displayed = path.display().to_string();
