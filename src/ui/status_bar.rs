@@ -48,9 +48,12 @@ impl Widget for StatusBar {
 
         let branding_width = branding.width() as u16;
 
-        let [controls_area, branding_area] =
-            Layout::horizontal([Constraint::Min(0), Constraint::Length(branding_width)])
-                .areas(area);
+        let [controls_area, _, branding_area] = Layout::horizontal([
+            Constraint::Min(0),
+            Constraint::Length(4),
+            Constraint::Length(branding_width),
+        ])
+        .areas(area);
 
         let controls = Line::from(vec![
             key!("Tab"),
