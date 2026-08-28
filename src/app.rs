@@ -13,6 +13,7 @@ pub enum FocusedField {
     #[default]
     Pattern,
     Replacement,
+    FileList,
 }
 
 #[derive(Debug)]
@@ -79,6 +80,11 @@ impl App {
 
     fn handle_events(&mut self) -> Result<()> {
         if let crossterm::event::Event::Key(key) = crossterm::event::read()? {
+            // Only handle event when key is pressed down
+            if !key.is_press() {
+                return Ok(());
+            }
+
             match key.code {
                 KeyCode::Esc => {
                     self.exit = true;
@@ -87,13 +93,15 @@ impl App {
                 KeyCode::Tab => {
                     self.focused = match self.focused {
                         FocusedField::Pattern => FocusedField::Replacement,
-                        FocusedField::Replacement => FocusedField::Pattern,
+                        FocusedField::Replacement => FocusedField::FileList,
+                        FocusedField::FileList => FocusedField::Pattern,
                     }
                 }
 
                 _ => match self.focused {
                     FocusedField::Pattern => self.pattern.handle_key(key),
                     FocusedField::Replacement => self.replacement.handle_key(key),
+                    FocusedField::FileList => {}
                 },
             }
         }
