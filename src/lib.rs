@@ -1,2 +1,2 @@
 pub mod error;
-pub mod widgets;
+pub mod ui;

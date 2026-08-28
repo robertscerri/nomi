@@ -1,12 +1,13 @@
 use std::path::PathBuf;
 
 use crossterm::event::KeyCode;
-use nomi::{error::Result, widgets::TextInput};
 use ratatui::{
     DefaultTerminal, Frame,
     layout::{Constraint, Layout},
     widgets::Block,
 };
+
+use nomi::{error::Result, ui::TextInput};
 
 #[derive(Debug, Default)]
 pub enum FocusedField {
@@ -24,7 +25,6 @@ pub struct App {
     replacement: TextInput,
 
     focused: FocusedField,
-
     exit: bool,
 }
 
